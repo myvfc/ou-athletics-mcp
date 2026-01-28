@@ -1,63 +1,101 @@
-PS C:\Users\sprin\nmhu-test> npx playwright test inspect-archive-items.spec.js --reporter=list
+import { chromium } from 'playwright';
 
-Running 1 test using 1 worker
-
-     1 inspect-archive-items.spec.js:3:1 › Find individual archive items
-
-========== ARCHIVE ITEMS ==========
-{
-  "patterns": {
-    "divs": 0,
-    "links": 31,
-    "lists": 9,
-    "articles": 0
-  },
-  "sampleLinks": [
-    {
-      "text": "RMAC Releases Softball Preseason Poll",
-      "href": "/news/2026/1/22/rmac-releases-softball-preseason-poll.aspx",
-      "class": ""
-    },
-    {
-      "text": "Coach Kali Pugh Announces First NMHU Signing Class",
-      "href": "/news/2025/8/13/softball-coach-kali-pugh-announces-first-nmhu-signing-class.aspx",
-      "class": ""
-    },
-    {
-      "text": "Kali Pugh Named NMHU Softball Coach",
-      "href": "/news/2025/5/28/kali-pugh-named-nmhu-softball-coach.aspx",
-      "class": ""
-    },
-    {
-      "text": "New Mexico Highlands University Names New Athletic Director",
-      "href": "/news/2025/5/27/general-new-mexico-highlands-university-names-new-athletic-director.aspx",
-      "class": ""
-    },
-    {
-      "text": "Cowgirls Drop Two in Day One in Golden",
-      "href": "/news/2025/4/25/softball-cowgirls-drop-two-in-day-one-in-golden.aspx",
-      "class": ""
-    }
-  ],
-  "possibleItems": [
-    {
-      "tag": "HEADER",
-      "class": "sidearm-archives-header sidearm-common-header flex row flex-column large-flex-row noprint",
-      "text": "Search...  Sports Dropdown All Sports  BaseballFootballGeneralMen's BasketballMen's Cross CountryMen's RodeoSoftballVolleyballWomen's BasketballWomen'"
-    },
-    {
-      "tag": "UL",
-      "class": "sidearm-archives-select-list sidearm-common-header-select-list flex flex-column medium-flex-row flex-item-1",
-      "text": "Search...  Sports Dropdown All Sports  BaseballFootballGeneralMen's BasketballMen's Cross CountryMen's RodeoSoftballVolleyballWomen's BasketballWomen'"
-    },
-    {
-      "tag": "LI",
-      "class": "sidearm-archives-select-filter flex flex-item-1",
-      "text": "Search..."
-    }
-  ],
-  "innerHTML": "<div class=\"sidearm-common-promotion\"><ads-component params=\"{name : 'archives-above-header-1'}\"><!-- ko ifnot: isInitializing() -->\n\n    <!-- ko switch -->\n\n        <!-- ko case: ad.location.type === 'single' --><!-- /ko -->\n\n        <!-- ko case: ad.location.type === 'multi' --><!-- /ko -->\n\n        <!-- ko case: ad.location.type === 'html' --><!-- /ko -->\n\n        <!-- ko case: ad.location.type === 'icons' --><!-- /ko -->\n\n        <!-- ko case: ad.location.type === 'dfp' --><!-- /ko -->\n\n    <!-- /ko -->\n\n<!-- /ko --></ads-component></div> <h2>Story Archives</h2> <header class=\"sidearm-archives-header sidearm-common-header flex row flex-column large-flex-row noprint\"><ul class=\"sidearm-archives-select-list sidearm-common-header-select-list flex flex-column medium-flex-row flex-item-1\"><li class=\"sidearm-archives-select-filter flex flex-item-1\"><label for=\"vue-archives-input\" class=\"hide\">Search...</label> <input id=\"vue-archives-input\" placeholder=\"Search...\" class=\"flex-item-1\"></l"
+export interface Player {
+  name: string;
+  jerseyNumber: string;
+  position: string;
+  year: string;
+  hometown: string;
+  height: string;
+  highSchool: string;
+  bioLink: string;
 }
-  ✓  1 inspect-archive-items.spec.js:3:1 › Find individual archive items (7.8s)
 
-  1 passed (8.9s)
+export interface Game {
+  date: string;
+  opponent: string;
+  location: string;
+  result: string;
+  score: string;
+}
+
+export interface Stat {
+  player: string;
+  stats: Record<string, string>;
+}
+
+export interface NewsArticle {
+  title: string;
+  date: string;
+  summary: string;
+  link: string;
+}
+
+export async function scrapeRoster(sport: string): Promise<Player[]> {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  
+  try {
+    await page.goto(`https://nmhuathletics.com/sports/${sport}/roster`, {
+      waitUntil: 'networkidle',
+      timeout: 30000
+    });
+    
+    const players = await page.evaluate(() => {
+      const playerElements = document.querySelectorAll('.sidearm-roster-player');
+      
+      return Array.from(playerElements).map(player => {
+        const nameElement = player.querySelector('.sidearm-roster-player-name a');
+        const positionElement = player.querySelector('.sidearm-roster-player-position');
+        
+        let position = positionElement?.textContent?.trim() || '';
+        if (position) {
+          position = position.split('\n')[0].trim();
+        }
+        
+        return {
+          name: nameElement?.textContent?.trim() || '',
+          jerseyNumber: player.querySelector('.sidearm-roster-player-jersey-number')?.textContent?.trim() || '',
+          position: position,
+          year: player.querySelector('.sidearm-roster-player-academic-year')?.textContent?.trim() || '',
+          hometown: player.querySelector('.sidearm-roster-player-hometown')?.textContent?.trim() || '',
+          height: player.querySelector('.sidearm-roster-player-height')?.textContent?.trim() || '',
+          highSchool: player.querySelector('.sidearm-roster-player-highschool')?.textContent?.trim() || '',
+          bioLink: nameElement?.getAttribute('href') || ''
+        };
+      });
+    });
+    
+    return players;
+  } finally {
+    await browser.close();
+  }
+}
+
+export async function scrapeSchedule(sport: string): Promise<Game[]> {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  
+  try {
+    await page.goto(`https://nmhuathletics.com/sports/${sport}/schedule`, {
+      waitUntil: 'networkidle',
+      timeout: 30000
+    });
+    
+    const games = await page.evaluate(() => {
+      const gameElements = document.querySelectorAll('.sidearm-schedule-game');
+      
+      return Array.from(gameElements).map(game => {
+        return {
+          date: game.querySelector('.sidearm-schedule-game-date')?.textContent?.trim() || '',
+          opponent: game.querySelector('.sidearm-schedule-game-opponent-name')?.textContent?.trim() || '',
+          location: game.querySelector('.sidearm-schedule-game-location')?.textContent?.trim() || '',
+          result: game.querySelector('.sidearm-schedule-game-result')?.textContent?.trim() || '',
+          score: game.querySelector('.sidearm-schedule-game-result-score')?.textContent?.trim() || ''
+        };
+      });
+    });
+    
+    return games;
+  } finally {
+    aw
