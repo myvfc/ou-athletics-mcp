@@ -1,11 +1,11 @@
 [phases.setup]
-nixPkgs = ['nodejs_20', 'chromium']
+nixPkgs = ['nodejs_20']
 
 [phases.install]
 cmds = ['npm ci --omit=dev']
 
 [phases.build]
-cmds = ['echo "Skipping build - using pre-compiled code"']
+cmds = ['npx playwright install chromium', 'npx playwright install-deps chromium']
 
 [start]
 cmd = 'node build/index.js'
