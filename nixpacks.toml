@@ -4,5 +4,8 @@ nixPkgs = ['nodejs_20', 'chromium']
 [phases.install]
 cmds = ['npm ci --omit=dev']
 
+[phases.build]
+cmds = ['echo "Skipping build - using pre-compiled code"']
+
 [start]
 cmd = 'node build/index.js'
