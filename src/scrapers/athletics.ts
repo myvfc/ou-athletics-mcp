@@ -295,3 +295,91 @@ export async function getTeamComparison(sport1: string, sport2: string): Promise
     }
   };
 }
+  export async function getSeasonRecords(sport: string): Promise<any> {
+  const schedule = await scrapeSchedule(sport);
+  
+  const wins = schedule.filter(g => 
+    g.result.toLowerCase().includes('w') || 
+    g.result.toLowerCase().includes('win')
+  ).length;
+  
+  const losses = schedule.filter(g => 
+    g.result.toLowerCase().includes('l') || 
+    g.result.toLowerCase().includes('loss')
+  ).length;
+  
+  const ties = schedule.filter(g => 
+    g.result.toLowerCase().includes('t') || 
+    g.result.toLowerCase().includes('tie')
+  ).length;
+  
+  return {
+    sport: sport,
+    wins: wins,
+    losses: losses,
+    ties: ties,
+    totalGames: wins + losses + ties,
+    winPercentage: wins + losses > 0 ? (wins / (wins + losses) * 100).toFixed(1) : '0',
+    upcomingGames: schedule.filter(g => !g.result && !g.score).length
+  };
+}
+
+export async function getPlayerStatsDetail(sport: string, playerName: string): Promise<any> {
+  const [player, stats] = await Promise.all([
+    getPlayerBio(sport, playerName),
+    scrapeStats(sport)
+  ]);
+  
+  const playerStats = stats.find(s => 
+    s.player.toLowerCase().includes(playerName.toLowerCase())
+  );
+  
+  return {
+    player: player,
+    statistics: playerStats || null
+  };
+}
+
+export async function getAllSportsSummary(): Promise<any[]> {
+  const sports = [
+    'football', 'baseball', 'softball', 
+    'mens-basketball', 'womens-basketball',
+    'womens-volleyball', 'womens-soccer'
+  ];
+  
+  const summaries = await Promise.all(
+    sports.map(async (sport) => {
+      try {
+        const summary = await getSportSummary(sport);
+        return summary;
+      } catch (error) {
+        return {
+          sport: sport,
+          error: 'Unable to fetch data'
+        };
+      }
+    })
+  );
+  
+  return summaries;
+}
+
+export async function getGameDetails(sport: string, opponent: string): Promise<Game | null> {
+  const schedule = await scrapeSchedule(sport);
+  
+  const game = schedule.find(g => 
+    g.opponent.toLowerCase().includes(opponent.toLowerCase())
+  );
+  
+  return game || null;
+}
+
+export async function getTopPerformers(sport: string, limit: number = 5): Promise<any> {
+  const stats = await scrapeStats(sport);
+  
+  return {
+    sport: sport,
+    topPerformers: stats.slice(0, limit),
+    totalPlayers: stats.length
+  };
+}
