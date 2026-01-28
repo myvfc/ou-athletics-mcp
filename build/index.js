@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import express from 'express';
+import { scrapeRoster, scrapeSchedule, scrapeStats, scrapeNews } from './scrapers/athletics.js';
 const app = express();
 app.use(express.json());
 const PORT = process.env.PORT || 3000;
@@ -19,7 +20,7 @@ const AVAILABLE_SPORTS = [
 const TOOLS = [
     {
         name: 'get_roster',
-        description: 'Get the roster for any NMHU sport including player details (name, number, position, year, hometown, height, high school)',
+        description: 'Get the roster for any NMHU sport including player details',
         inputSchema: {
             type: 'object',
             properties: {
@@ -34,7 +35,7 @@ const TOOLS = [
     },
     {
         name: 'get_schedule',
-        description: 'Get the schedule for any NMHU sport including past and upcoming games',
+        description: 'Get the schedule for any NMHU sport',
         inputSchema: {
             type: 'object',
             properties: {
@@ -49,7 +50,7 @@ const TOOLS = [
     },
     {
         name: 'get_stats',
-        description: 'Get player and team statistics for any NMHU sport',
+        description: 'Get player and team statistics',
         inputSchema: {
             type: 'object',
             properties: {
@@ -64,7 +65,7 @@ const TOOLS = [
     },
     {
         name: 'get_news',
-        description: 'Get latest news articles for any NMHU sport',
+        description: 'Get latest news articles',
         inputSchema: {
             type: 'object',
             properties: {
@@ -75,7 +76,7 @@ const TOOLS = [
                 },
                 limit: {
                     type: 'number',
-                    description: 'Number of articles to return (default: 10)',
+                    description: 'Number of articles',
                     default: 10
                 }
             },
@@ -83,4 +84,89 @@ const TOOLS = [
         },
     },
 ];
-app.get(');
+app.get('/', (req, res) => {
+    res.json({
+        service: 'NMHU Athletics MCP Server',
+        status: 'running',
+        tools: TOOLS.length,
+        available_sports: AVAILABLE_SPORTS,
+        base_url: 'https://nmhuathletics.com'
+    });
+});
+const mcpHandler = async (req, res) => {
+    const { method, params } = req.body;
+    try {
+        if (method === 'initialize') {
+            return res.json({
+                jsonrpc: '2.0',
+                id: req.body.id,
+                result: {
+                    protocolVersion: '0.1.0',
+                    capabilities: { tools: {} },
+                    serverInfo: {
+                        name: 'nmhu-athletics-mcp',
+                        version: '1.0.0'
+                    }
+                }
+            });
+        }
+        if (method === 'tools/list') {
+            return res.json({
+                jsonrpc: '2.0',
+                id: req.body.id,
+                result: { tools: TOOLS }
+            });
+        }
+        if (method === 'tools/call') {
+            const { name, arguments: args } = params;
+            console.log(`Tool call: ${name}`, JSON.stringify(args, null, 2));
+            let data;
+            if (name === 'get_roster') {
+                data = await scrapeRoster(args.sport);
+            }
+            else if (name === 'get_schedule') {
+                data = await scrapeSchedule(args.sport);
+            }
+            else if (name === 'get_stats') {
+                data = await scrapeStats(args.sport);
+            }
+            else if (name === 'get_news') {
+                data = await scrapeNews(args.sport, args.limit || 10);
+            }
+            else {
+                return res.status(400).json({
+                    jsonrpc: '2.0',
+                    id: req.body.id,
+                    error: { code: -32601, message: `Unknown tool: ${name}` }
+                });
+            }
+            return res.json({
+                jsonrpc: '2.0',
+                id: req.body.id,
+                result: {
+                    content: [{ type: 'text', text: JSON.stringify(data, null, 2) }]
+                }
+            });
+        }
+        return res.status(400).json({
+            jsonrpc: '2.0',
+            id: req.body.id,
+            error: { code: -32601, message: `Unknown method: ${method}` }
+        });
+    }
+    catch (error) {
+        console.error('Error:', error.message);
+        return res.status(500).json({
+            jsonrpc: '2.0',
+            id: req.body.id,
+            error: { code: -32603, message: error.message }
+        });
+    }
+};
+app.post('/', mcpHandler);
+app.post('/mcp', mcpHandler);
+app.listen(PORT, () => {
+    console.log(`NMHU Athletics MCP Server running on port ${PORT}`);
+    console.log(`Tools: ${TOOLS.length}`);
+    TOOLS.forEach(tool => console.log(`  - ${tool.name}`));
+});
