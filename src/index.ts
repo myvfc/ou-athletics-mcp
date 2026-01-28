@@ -169,7 +169,7 @@ app.post('/', mcpHandler);
 app.post('/mcp', mcpHandler);
 
 app.listen(PORT, () => {
-  console.log(`🏈 NMHU Athletics MCP Server running on port ${PORT}`);
+  console.log(`🏈⚾🏀 NMHU Athletics MCP Server running on port ${PORT}`);
   console.log(`Available sports: ${AVAILABLE_SPORTS.length}`);
   console.log('\nAvailable tools:');
   TOOLS.forEach(tool => {
