@@ -30,7 +30,6 @@ export interface NewsArticle {
   summary: string;
   link: string;
 }
-
 export async function scrapeRoster(sport: string): Promise<Player[]> {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
@@ -71,7 +70,6 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
     await browser.close();
   }
 }
-
 export async function scrapeSchedule(sport: string): Promise<Game[]> {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
@@ -98,4 +96,91 @@ export async function scrapeSchedule(sport: string): Promise<Game[]> {
     
     return games;
   } finally {
-    aw
+    await browser.close();
+  }
+}
+export async function scrapeStats(sport: string): Promise<Stat[]> {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  
+  try {
+    await page.goto(`https://nmhuathletics.com/sports/${sport}/stats`, {
+      waitUntil: 'networkidle',
+      timeout: 30000
+    });
+    
+    const stats = await page.evaluate(() => {
+      const statRows = document.querySelectorAll('.stats-table tbody tr, .sidearm-table tbody tr');
+      
+      return Array.from(statRows).map(row => {
+        const cells = row.querySelectorAll('td');
+        const player = cells[0]?.textContent?.trim() || '';
+        const stats: Record<string, string> = {};
+        
+        const headers = Array.from(document.querySelectorAll('.stats-table thead th, .sidearm-table thead th'))
+          .map(h => h.textContent?.trim() || '');
+        
+        cells.forEach((cell, index) => {
+          if (index > 0 && headers[index]) {
+            stats[headers[index]] = cell.textContent?.trim() || '';
+          }
+        });
+        
+        return { player, stats };
+      });
+    });
+    
+    return stats;
+  } finally {
+    await browser.close();
+  }
+}
+export async function scrapeNews(sport: string, limit: number = 10): Promise<NewsArticle[]> {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  
+  try {
+    await page.goto(`https://nmhuathletics.com/sports/${sport}/archives`, {
+      waitUntil: 'networkidle',
+      timeout: 30000
+    });
+    
+    await page.waitForTimeout(2000);
+    
+    const news = await page.evaluate((maxArticles) => {
+      const archiveArticle = document.querySelector('article.sidearm-archives');
+      
+      if (!archiveArticle) {
+        return [];
+      }
+      
+      const links = Array.from(archiveArticle.querySelectorAll('a'))
+        .filter(a => {
+          const href = a.getAttribute('href') || '';
+          return href.includes('/news/');
+        })
+        .slice(0, maxArticles);
+      
+      return links.map(link => {
+        const href = link.getAttribute('href') || '';
+        const dateMatch = href.match(/\/news\/(\d{4})\/(\d{1,2})\/(\d{1,2})\//);
+        let date = '';
+        if (dateMatch) {
+          const [, year, month, day] = dateMatch;
+          date = `${month}/${day}/${year}`;
+        }
+        
+        return {
+          title: link.textContent?.trim() || '',
+          date: date,
+          summary: '',
+          link: href.startsWith('http') ? href : `https://nmhuathletics.com${href}`
+        };
+      });
+    }, limit);
+    
+    return news;
+  } finally {
+    await browser.close();
+  }
+}
