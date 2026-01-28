@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import express from 'express';
-import { scrapeRoster, scrapeSchedule, scrapeStats, scrapeNews } from './scrapers/athletics.js';
+import { scrapeRoster, scrapeSchedule, scrapeStats, scrapeNews, getRecentResults, getUpcomingGames, getTeamDashboard, searchPlayer, getPlayerBio, getSportSummary, getTeamComparison } from './scrapers/athletics.js';
 const app = express();
 app.use(express.json());
 const PORT = process.env.PORT || 3000;
@@ -24,11 +24,7 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: {
-                sport: {
-                    type: 'string',
-                    description: 'Sport name',
-                    enum: AVAILABLE_SPORTS,
-                },
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS }
             },
             required: ['sport'],
         },
@@ -39,11 +35,7 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: {
-                sport: {
-                    type: 'string',
-                    description: 'Sport name',
-                    enum: AVAILABLE_SPORTS,
-                },
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS }
             },
             required: ['sport'],
         },
@@ -54,11 +46,7 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: {
-                sport: {
-                    type: 'string',
-                    description: 'Sport name',
-                    enum: AVAILABLE_SPORTS,
-                },
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS }
             },
             required: ['sport'],
         },
@@ -69,18 +57,92 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: {
-                sport: {
-                    type: 'string',
-                    description: 'Sport name',
-                    enum: AVAILABLE_SPORTS,
-                },
-                limit: {
-                    type: 'number',
-                    description: 'Number of articles',
-                    default: 10
-                }
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS },
+                limit: { type: 'number', description: 'Number of articles', default: 10 }
             },
             required: ['sport'],
+        },
+    },
+    {
+        name: 'get_recent_results',
+        description: 'Get the last 5 game results for any NMHU sport',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS },
+                limit: { type: 'number', description: 'Number of results', default: 5 }
+            },
+            required: ['sport'],
+        },
+    },
+    {
+        name: 'get_upcoming_games',
+        description: 'Get the next 5 upcoming games for any NMHU sport',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS },
+                limit: { type: 'number', description: 'Number of games', default: 5 }
+            },
+            required: ['sport'],
+        },
+    },
+    {
+        name: 'get_team_dashboard',
+        description: 'Get complete team overview including roster, recent results, upcoming games, stats, and news',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS }
+            },
+            required: ['sport'],
+        },
+    },
+    {
+        name: 'search_player',
+        description: 'Search for a player by name, hometown, position, or jersey number',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS },
+                searchTerm: { type: 'string', description: 'Search term' }
+            },
+            required: ['sport', 'searchTerm'],
+        },
+    },
+    {
+        name: 'get_player_bio',
+        description: 'Get detailed player biography and information',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS },
+                playerName: { type: 'string', description: 'Player name' }
+            },
+            required: ['sport', 'playerName'],
+        },
+    },
+    {
+        name: 'get_sport_summary',
+        description: 'Get quick summary of a sport including roster size, next game, last result, and recent news',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS }
+            },
+            required: ['sport'],
+        },
+    },
+    {
+        name: 'get_team_comparison',
+        description: 'Compare two NMHU sports teams',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport1: { type: 'string', description: 'First sport', enum: AVAILABLE_SPORTS },
+                sport2: { type: 'string', description: 'Second sport', enum: AVAILABLE_SPORTS }
+            },
+            required: ['sport1', 'sport2'],
         },
     },
 ];
@@ -132,6 +194,27 @@ const mcpHandler = async (req, res) => {
             }
             else if (name === 'get_news') {
                 data = await scrapeNews(args.sport, args.limit || 10);
+            }
+            else if (name === 'get_recent_results') {
+                data = await getRecentResults(args.sport, args.limit || 5);
+            }
+            else if (name === 'get_upcoming_games') {
+                data = await getUpcomingGames(args.sport, args.limit || 5);
+            }
+            else if (name === 'get_team_dashboard') {
+                data = await getTeamDashboard(args.sport);
+            }
+            else if (name === 'search_player') {
+                data = await searchPlayer(args.sport, args.searchTerm);
+            }
+            else if (name === 'get_player_bio') {
+                data = await getPlayerBio(args.sport, args.playerName);
+            }
+            else if (name === 'get_sport_summary') {
+                data = await getSportSummary(args.sport);
+            }
+            else if (name === 'get_team_comparison') {
+                data = await getTeamComparison(args.sport1, args.sport2);
             }
             else {
                 return res.status(400).json({

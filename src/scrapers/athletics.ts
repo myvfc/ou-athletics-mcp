@@ -184,3 +184,114 @@ export async function scrapeNews(sport: string, limit: number = 10): Promise<New
     await browser.close();
   }
 }
+  export async function getRecentResults(sport: string, limit: number = 5): Promise<Game[]> {
+  const schedule = await scrapeSchedule(sport);
+  const today = new Date();
+  
+  return schedule
+    .filter(game => {
+      // Filter for games that have results (past games)
+      return game.result !== '' || game.score !== '';
+    })
+    .slice(0, limit);
+}
+
+export async function getUpcomingGames(sport: string, limit: number = 5): Promise<Game[]> {
+  const schedule = await scrapeSchedule(sport);
+  
+  return schedule
+    .filter(game => {
+      // Filter for games without results (upcoming games)
+      return game.result === '' && game.score === '';
+    })
+    .slice(0, limit);
+}
+
+export async function getTeamDashboard(sport: string): Promise<any> {
+  const [roster, schedule, stats, news] = await Promise.all([
+    scrapeRoster(sport),
+    scrapeSchedule(sport),
+    scrapeStats(sport),
+    scrapeNews(sport, 5)
+  ]);
+  
+  const recentGames = schedule
+    .filter(g => g.result !== '' || g.score !== '')
+    .slice(0, 5);
+  
+  const upcomingGames = schedule
+    .filter(g => g.result === '' && g.score === '')
+    .slice(0, 5);
+  
+  return {
+    sport: sport,
+    teamSize: roster.length,
+    roster: roster,
+    recentResults: recentGames,
+    upcomingGames: upcomingGames,
+    stats: stats.slice(0, 10),
+    latestNews: news
+  };
+}
+
+export async function searchPlayer(sport: string, searchTerm: string): Promise<Player[]> {
+  const roster = await scrapeRoster(sport);
+  const term = searchTerm.toLowerCase();
+  
+  return roster.filter(player => 
+    player.name.toLowerCase().includes(term) ||
+    player.hometown.toLowerCase().includes(term) ||
+    player.position.toLowerCase().includes(term) ||
+    player.jerseyNumber === searchTerm
+  );
+}
+
+export async function getPlayerBio(sport: string, playerName: string): Promise<Player | null> {
+  const roster = await scrapeRoster(sport);
+  const player = roster.find(p => 
+    p.name.toLowerCase().includes(playerName.toLowerCase())
+  );
+  
+  return player || null;
+}
+
+export async function getSportSummary(sport: string): Promise<any> {
+  const [roster, news, schedule] = await Promise.all([
+    scrapeRoster(sport),
+    scrapeNews(sport, 3),
+    scrapeSchedule(sport)
+  ]);
+  
+  const nextGame = schedule.find(g => g.result === '' && g.score === '');
+  const lastGame = schedule.reverse().find(g => g.result !== '' || g.score !== '');
+  
+  return {
+    sport: sport,
+    rosterSize: roster.length,
+    nextGame: nextGame || null,
+    lastResult: lastGame || null,
+    recentNews: news
+  };
+}
+
+export async function getTeamComparison(sport1: string, sport2: string): Promise<any> {
+  const [roster1, roster2, news1, news2] = await Promise.all([
+    scrapeRoster(sport1),
+    scrapeRoster(sport2),
+    scrapeNews(sport1, 3),
+    scrapeNews(sport2, 3)
+  ]);
+  
+  return {
+    team1: {
+      sport: sport1,
+      rosterSize: roster1.length,
+      recentNews: news1
+    },
+    team2: {
+      sport: sport2,
+      rosterSize: roster2.length,
+      recentNews: news2
+    }
+  };
+}
