@@ -60,7 +60,9 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
           hometown: player.querySelector('.sidearm-roster-player-hometown')?.textContent?.trim() || '',
           height: player.querySelector('.sidearm-roster-player-height')?.textContent?.trim() || '',
           highSchool: player.querySelector('.sidearm-roster-player-highschool')?.textContent?.trim() || '',
-          bioLink: nameElement?.getAttribute('href') || ''
+         bioLink: nameElement?.getAttribute('href') 
+         ? `https://gobuffsgo.com${nameElement.getAttribute('href')}` 
+         : ''
         };
       });
     });
