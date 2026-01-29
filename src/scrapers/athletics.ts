@@ -61,7 +61,7 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
           height: player.querySelector('.sidearm-roster-player-height')?.textContent?.trim() || '',
           highSchool: player.querySelector('.sidearm-roster-player-highschool')?.textContent?.trim() || '',
          bioLink: nameElement?.getAttribute('href') 
-         ? `https://gobuffsgo.com${nameElement.getAttribute('href')}` 
+         ? `https://nmhuathletics.com${nameElement.getAttribute('href')}` 
          : ''
         };
       });
