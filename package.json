@@ -1,11 +1,11 @@
 {
-  "name": "nmhu-athletics-mcp",
+  "name": "ou-athletics-mcp",
   "version": "1.0.0",
-  "description": "MCP server for NMHU Athletics data",
+  "description": "MCP server for OU Athletics data",
   "type": "module",
   "main": "build/index.js",
   "bin": {
-    "nmhu-athletics-mcp": "./build/index.js"
+    "ou-athletics-mcp": "./build/index.js"
   },
   "scripts": {
     "build": "npx tsc",
