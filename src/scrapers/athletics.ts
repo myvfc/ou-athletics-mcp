@@ -1,7 +1,7 @@
 import { chromium } from 'playwright';
 
 // CONFIGURATION: Read base URL from environment variable
-const BASE_URL = process.env.BASE_URL || 'https://nmhuathletics.com';
+const BASE_URL = process.env.BASE_URL || 'https://soonersports.com';
 
 export interface Player {
   name: string;
