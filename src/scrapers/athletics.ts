@@ -1,5 +1,8 @@
 import { chromium } from 'playwright';
 
+// CONFIGURATION: Read base URL from environment variable
+const BASE_URL = process.env.BASE_URL || 'https://nmhuathletics.com';
+
 export interface Player {
   name: string;
   jerseyNumber: string;
@@ -30,17 +33,19 @@ export interface NewsArticle {
   summary: string;
   link: string;
 }
+
 export async function scrapeRoster(sport: string): Promise<Player[]> {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   
   try {
-    await page.goto(`https://nmhuathletics.com/sports/${sport}/roster`, {
+    // CHANGED: Use BASE_URL instead of hardcoded URL
+    await page.goto(`${BASE_URL}/sports/${sport}/roster`, {
       waitUntil: 'networkidle',
       timeout: 30000
     });
     
-    const players = await page.evaluate(() => {
+    const players = await page.evaluate((baseUrl) => {
       const playerElements = document.querySelectorAll('.sidearm-roster-player');
       
       return Array.from(playerElements).map(player => {
@@ -52,6 +57,17 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
           position = position.split('\n')[0].trim();
         }
         
+        // Extract URL from data-player-url attribute on the li element
+        let dataUrl = player.getAttribute('data-player-url') || '';
+        let bioLink = '';
+        if (dataUrl) {
+          // AGGRESSIVE CLEANING: Strip all trailing junk including ), whitespace, etc.
+          dataUrl = dataUrl.trim();
+          // Remove any trailing characters that aren't alphanumeric or /
+          dataUrl = dataUrl.replace(/[^a-zA-Z0-9/]+$/, '');
+          bioLink = `${baseUrl}${dataUrl}`;
+        }
+        
         return {
           name: nameElement?.textContent?.trim() || '',
           jerseyNumber: player.querySelector('.sidearm-roster-player-jersey-number')?.textContent?.trim() || '',
@@ -60,24 +76,24 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
           hometown: player.querySelector('.sidearm-roster-player-hometown')?.textContent?.trim() || '',
           height: player.querySelector('.sidearm-roster-player-height')?.textContent?.trim() || '',
           highSchool: player.querySelector('.sidearm-roster-player-highschool')?.textContent?.trim() || '',
-         bioLink: nameElement?.getAttribute('href') 
-         ? `https://nmhuathletics.com${nameElement.getAttribute('href')}` 
-         : ''
+          bioLink: bioLink
         };
       });
-    });
+    }, BASE_URL);
     
     return players;
   } finally {
     await browser.close();
   }
 }
+
 export async function scrapeSchedule(sport: string): Promise<Game[]> {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   
   try {
-    await page.goto(`https://nmhuathletics.com/sports/${sport}/schedule`, {
+    // CHANGED: Use BASE_URL instead of hardcoded URL
+    await page.goto(`${BASE_URL}/sports/${sport}/schedule`, {
       waitUntil: 'networkidle',
       timeout: 30000
     });
@@ -101,12 +117,14 @@ export async function scrapeSchedule(sport: string): Promise<Game[]> {
     await browser.close();
   }
 }
+
 export async function scrapeStats(sport: string): Promise<Stat[]> {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   
   try {
-    await page.goto(`https://nmhuathletics.com/sports/${sport}/stats`, {
+    // CHANGED: Use BASE_URL instead of hardcoded URL
+    await page.goto(`${BASE_URL}/sports/${sport}/stats`, {
       waitUntil: 'networkidle',
       timeout: 30000
     });
@@ -137,19 +155,21 @@ export async function scrapeStats(sport: string): Promise<Stat[]> {
     await browser.close();
   }
 }
+
 export async function scrapeNews(sport: string, limit: number = 10): Promise<NewsArticle[]> {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   
   try {
-    await page.goto(`https://nmhuathletics.com/sports/${sport}/archives`, {
+    // CHANGED: Use BASE_URL instead of hardcoded URL
+    await page.goto(`${BASE_URL}/sports/${sport}/archives`, {
       waitUntil: 'networkidle',
       timeout: 30000
     });
     
     await page.waitForTimeout(2000);
     
-    const news = await page.evaluate((maxArticles) => {
+    const news = await page.evaluate((maxArticles, baseUrl) => {
       const archiveArticle = document.querySelector('article.sidearm-archives');
       
       if (!archiveArticle) {
@@ -176,17 +196,18 @@ export async function scrapeNews(sport: string, limit: number = 10): Promise<New
           title: link.textContent?.trim() || '',
           date: date,
           summary: '',
-          link: href.startsWith('http') ? href : `https://nmhuathletics.com${href}`
+          link: href.startsWith('http') ? href : `${baseUrl}${href}`
         };
       });
-    }, limit);
+    }, limit, BASE_URL);
     
     return news;
   } finally {
     await browser.close();
   }
 }
-  export async function getRecentResults(sport: string, limit: number = 5): Promise<Game[]> {
+
+export async function getRecentResults(sport: string, limit: number = 5): Promise<Game[]> {
   const schedule = await scrapeSchedule(sport);
   const today = new Date();
   
@@ -297,7 +318,8 @@ export async function getTeamComparison(sport1: string, sport2: string): Promise
     }
   };
 }
-  export async function getSeasonRecords(sport: string): Promise<any> {
+
+export async function getSeasonRecords(sport: string): Promise<any> {
   const schedule = await scrapeSchedule(sport);
   
   const wins = schedule.filter(g => 
