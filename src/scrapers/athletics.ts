@@ -1,9 +1,13 @@
 import { chromium } from 'playwright';
 
 // CONFIGURATION: Read base URL from environment variable
+import { chromium } from 'playwright';
+
+// CONFIGURATION: Read base URL from environment variable
 const BASE_URL = process.env.BASE_URL || 'https://soonersports.com';
-console.log('🚨 ATHLETICS.TS LOADED - BASE_URL:', BASE_URL);
-console.log('🚨 process.env.BASE_URL:', process.env.BASE_URL);
+console.log('🚨 DEBUG - BASE_URL value:', BASE_URL);
+console.log('🚨 DEBUG - process.env.BASE_URL:', process.env.BASE_URL);
+console.log('🚨 DEBUG - All process.env:', JSON.stringify(process.env, null, 2));
 
 export interface Player {
   name: string;
