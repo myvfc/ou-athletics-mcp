@@ -39,7 +39,7 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
   const page = await browser.newPage();
   
   try {
-    // CHANGED: Use BASE_URL instead of hardcoded URL
+    // Use BASE_URL from environment variable
     await page.goto(`${BASE_URL}/sports/${sport}/roster`, {
       waitUntil: 'networkidle',
       timeout: 30000
@@ -57,14 +57,13 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
           position = position.split('\n')[0].trim();
         }
         
-        // Extract URL from data-player-url attribute on the li element
+        // Extract URL from data-player-url attribute
         let dataUrl = player.getAttribute('data-player-url') || '';
         let bioLink = '';
         if (dataUrl) {
-          // AGGRESSIVE CLEANING: Strip all trailing junk including ), whitespace, etc.
-          dataUrl = dataUrl.trim();
-          // Remove any trailing characters that aren't alphanumeric or /
-          dataUrl = dataUrl.replace(/[^a-zA-Z0-9/]+$/, '');
+          // Clean trailing junk
+          dataUrl = dataUrl.trim().replace(/[^a-zA-Z0-9/]+$/, '');
+          // Add base URL to create full link
           bioLink = `${baseUrl}${dataUrl}`;
         }
         
@@ -92,7 +91,6 @@ export async function scrapeSchedule(sport: string): Promise<Game[]> {
   const page = await browser.newPage();
   
   try {
-    // CHANGED: Use BASE_URL instead of hardcoded URL
     await page.goto(`${BASE_URL}/sports/${sport}/schedule`, {
       waitUntil: 'networkidle',
       timeout: 30000
@@ -123,7 +121,6 @@ export async function scrapeStats(sport: string): Promise<Stat[]> {
   const page = await browser.newPage();
   
   try {
-    // CHANGED: Use BASE_URL instead of hardcoded URL
     await page.goto(`${BASE_URL}/sports/${sport}/stats`, {
       waitUntil: 'networkidle',
       timeout: 30000
@@ -161,7 +158,6 @@ export async function scrapeNews(sport: string, limit: number = 10): Promise<New
   const page = await browser.newPage();
   
   try {
-    // CHANGED: Use BASE_URL instead of hardcoded URL
     await page.goto(`${BASE_URL}/sports/${sport}/archives`, {
       waitUntil: 'networkidle',
       timeout: 30000
@@ -169,37 +165,40 @@ export async function scrapeNews(sport: string, limit: number = 10): Promise<New
     
     await page.waitForTimeout(2000);
     
-    const news = await page.evaluate((maxArticles, baseUrl) => {
-      const archiveArticle = document.querySelector('article.sidearm-archives');
-      
-      if (!archiveArticle) {
-        return [];
-      }
-      
-      const links = Array.from(archiveArticle.querySelectorAll('a'))
-        .filter(a => {
-          const href = a.getAttribute('href') || '';
-          return href.includes('/news/');
-        })
-        .slice(0, maxArticles);
-      
-      return links.map(link => {
-        const href = link.getAttribute('href') || '';
-        const dateMatch = href.match(/\/news\/(\d{4})\/(\d{1,2})\/(\d{1,2})\//);
-        let date = '';
-        if (dateMatch) {
-          const [, year, month, day] = dateMatch;
-          date = `${month}/${day}/${year}`;
+    const news = await page.evaluate(
+      ({ maxArticles, baseUrl }: { maxArticles: number; baseUrl: string }) => {
+        const archiveArticle = document.querySelector('article.sidearm-archives');
+        
+        if (!archiveArticle) {
+          return [];
         }
         
-        return {
-          title: link.textContent?.trim() || '',
-          date: date,
-          summary: '',
-          link: href.startsWith('http') ? href : `${baseUrl}${href}`
-        };
-      });
-    }, limit, BASE_URL);
+        const links = Array.from(archiveArticle.querySelectorAll('a'))
+          .filter(a => {
+            const href = a.getAttribute('href') || '';
+            return href.includes('/news/');
+          })
+          .slice(0, maxArticles);
+        
+        return links.map(link => {
+          const href = link.getAttribute('href') || '';
+          const dateMatch = href.match(/\/news\/(\d{4})\/(\d{1,2})\/(\d{1,2})\//);
+          let date = '';
+          if (dateMatch) {
+            const [, year, month, day] = dateMatch;
+            date = `${month}/${day}/${year}`;
+          }
+          
+          return {
+            title: link.textContent?.trim() || '',
+            date: date,
+            summary: '',
+            link: href.startsWith('http') ? href : `${baseUrl}${href}`
+          };
+        });
+      },
+      { maxArticles: limit, baseUrl: BASE_URL }
+    );
     
     return news;
   } finally {
@@ -209,11 +208,9 @@ export async function scrapeNews(sport: string, limit: number = 10): Promise<New
 
 export async function getRecentResults(sport: string, limit: number = 5): Promise<Game[]> {
   const schedule = await scrapeSchedule(sport);
-  const today = new Date();
   
   return schedule
     .filter(game => {
-      // Filter for games that have results (past games)
       return game.result !== '' || game.score !== '';
     })
     .slice(0, limit);
@@ -224,7 +221,6 @@ export async function getUpcomingGames(sport: string, limit: number = 5): Promis
   
   return schedule
     .filter(game => {
-      // Filter for games without results (upcoming games)
       return game.result === '' && game.score === '';
     })
     .slice(0, limit);
