@@ -48,7 +48,6 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
     const fullUrl = `${BASE_URL}/sports/${sport}/roster`;
     console.log('🚨 DEBUG scrapeRoster - About to navigate to:', fullUrl);
     
-    // Use BASE_URL from environment variable
     await page.goto(fullUrl, {
       waitUntil: 'networkidle',
       timeout: 30000
@@ -56,39 +55,95 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
     
     console.log('🚨 DEBUG scrapeRoster - Navigation complete, current URL:', page.url());
     
+    // Wait for EITHER OU format OR NMHU format to load
+    // Try OU format first (s-person-card), then fallback to NMHU (sidearm-roster-player)
+    try {
+      await page.waitForSelector('.s-person-card, .sidearm-roster-player', { timeout: 10000 });
+      console.log('🚨 DEBUG scrapeRoster - Player elements loaded');
+    } catch (e) {
+      console.log('🚨 DEBUG scrapeRoster - No player elements found after waiting');
+    }
+    
     const players = await page.evaluate((baseUrl) => {
-      const playerElements = document.querySelectorAll('.sidearm-roster-player');
+      // Try OU format first
+      const ouPlayerCards = document.querySelectorAll('.s-person-card');
       
-      return Array.from(playerElements).map(player => {
-        const nameElement = player.querySelector('.sidearm-roster-player-name a');
-        const positionElement = player.querySelector('.sidearm-roster-player-position');
+      if (ouPlayerCards.length > 0) {
+        console.log('🔍 Using OU format selectors, found', ouPlayerCards.length, 'cards');
         
-        let position = positionElement?.textContent?.trim() || '';
-        if (position) {
-          position = position.split('\n')[0].trim();
-        }
+        return Array.from(ouPlayerCards).map(card => {
+          // Find the name and link
+          const nameLink = card.querySelector('.s-person-details__personal-single-line a.hoverunderline');
+          const name = nameLink?.textContent?.trim() || '';
+          
+          // Get bio link
+          const bioHref = nameLink?.getAttribute('href') || '';
+          const bioLink = bioHref ? (bioHref.startsWith('http') ? bioHref : `${baseUrl}${bioHref}`) : '';
+          
+          // Extract other details from the card
+          // OU structure has details in various s-person-details divs
+          const detailsText = card.textContent || '';
+          
+          // Try to extract jersey number (usually appears near the name)
+          const jerseyMatch = detailsText.match(/#(\d+)/);
+          const jerseyNumber = jerseyMatch ? jerseyMatch[1] : '';
+          
+          // Try to extract position, year, hometown from text
+          // These are harder to parse reliably in OU's format
+          // We'll do our best with the text content
+          const lines = detailsText.split('\n').map(l => l.trim()).filter(l => l);
+          
+          return {
+            name: name,
+            jerseyNumber: jerseyNumber,
+            position: '', // OU doesn't clearly separate this
+            year: '', // OU doesn't clearly separate this
+            hometown: '', // OU doesn't clearly separate this
+            height: '',
+            highSchool: '',
+            bioLink: bioLink
+          };
+        });
+      }
+      
+      // Fallback to NMHU/Sidearm format
+      const sidearmPlayers = document.querySelectorAll('.sidearm-roster-player');
+      
+      if (sidearmPlayers.length > 0) {
+        console.log('🔍 Using Sidearm format selectors, found', sidearmPlayers.length, 'players');
         
-        // Extract URL from data-player-url attribute
-        let dataUrl = player.getAttribute('data-player-url') || '';
-        let bioLink = '';
-        if (dataUrl) {
-          // Clean trailing junk
-          dataUrl = dataUrl.trim().replace(/[^a-zA-Z0-9/]+$/, '');
-          // Add base URL to create full link
-          bioLink = `${baseUrl}${dataUrl}`;
-        }
-        
-        return {
-          name: nameElement?.textContent?.trim() || '',
-          jerseyNumber: player.querySelector('.sidearm-roster-player-jersey-number')?.textContent?.trim() || '',
-          position: position,
-          year: player.querySelector('.sidearm-roster-player-academic-year')?.textContent?.trim() || '',
-          hometown: player.querySelector('.sidearm-roster-player-hometown')?.textContent?.trim() || '',
-          height: player.querySelector('.sidearm-roster-player-height')?.textContent?.trim() || '',
-          highSchool: player.querySelector('.sidearm-roster-player-highschool')?.textContent?.trim() || '',
-          bioLink: bioLink
-        };
-      });
+        return Array.from(sidearmPlayers).map(player => {
+          const nameElement = player.querySelector('.sidearm-roster-player-name a');
+          const positionElement = player.querySelector('.sidearm-roster-player-position');
+          
+          let position = positionElement?.textContent?.trim() || '';
+          if (position) {
+            position = position.split('\n')[0].trim();
+          }
+          
+          // Extract URL from data-player-url attribute
+          let dataUrl = player.getAttribute('data-player-url') || '';
+          let bioLink = '';
+          if (dataUrl) {
+            dataUrl = dataUrl.trim().replace(/[^a-zA-Z0-9/]+$/, '');
+            bioLink = `${baseUrl}${dataUrl}`;
+          }
+          
+          return {
+            name: nameElement?.textContent?.trim() || '',
+            jerseyNumber: player.querySelector('.sidearm-roster-player-jersey-number')?.textContent?.trim() || '',
+            position: position,
+            year: player.querySelector('.sidearm-roster-player-academic-year')?.textContent?.trim() || '',
+            hometown: player.querySelector('.sidearm-roster-player-hometown')?.textContent?.trim() || '',
+            height: player.querySelector('.sidearm-roster-player-height')?.textContent?.trim() || '',
+            highSchool: player.querySelector('.sidearm-roster-player-highschool')?.textContent?.trim() || '',
+            bioLink: bioLink
+          };
+        });
+      }
+      
+      console.log('🔍 No players found with either format');
+      return [];
     }, BASE_URL);
     
     console.log('🚨 DEBUG scrapeRoster - Found', players.length, 'players');
@@ -419,4 +474,3 @@ export async function getTopPerformers(sport: string, limit: number = 5): Promis
     totalPlayers: stats.length
   };
 }
-
