@@ -14,7 +14,7 @@ RUN npx playwright install chromium
 COPY . .
 
 # BUILD STEP - Compile TypeScript to JavaScript
-RUN npm run build
+RUN npx tsc
 
 # Expose port
 EXPOSE 3000
