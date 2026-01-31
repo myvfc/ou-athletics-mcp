@@ -81,32 +81,44 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
       
       if (ouPlayerCards.length > 0) {
         const players = Array.from(ouPlayerCards).map((card, index) => {
-          // Find the name - try multiple selectors
-          let nameElement = card.querySelector('a.hoverunderline h3');
-          if (!nameElement) {
-            nameElement = card.querySelector('h3');
-          }
-          if (!nameElement) {
-            nameElement = card.querySelector('a.hoverunderline');
-          }
+          // Get all text content - OU embeds everything in text
+          const fullText = card.textContent || '';
+          
+          // Extract name - it's in an h3 element
+          let nameElement = card.querySelector('h3');
           const name = nameElement?.textContent?.trim() || '';
           
-          // Get bio link from the a.hoverunderline
-          const nameLink = card.querySelector('a.hoverunderline');
-          const bioHref = nameLink?.getAttribute('href') || '';
-          const bioLink = bioHref ? (bioHref.startsWith('http') ? bioHref : `${baseUrl}${bioHref}`) : '';
+          // Parse all data from text content
+          // Format: "Jersey Number 00Allyssa ParkerPosition RHP/UTL Academic Year Fr.Height 5' 11'' Hometown Pocola, Okla.Last School Pocola HS"
           
-          // Get all text content to parse details
-          const detailsText = card.textContent || '';
-          
-          // Try to extract jersey number (format: "Jersey number 1 full bio")
-          const jerseyMatch = detailsText.match(/Jersey number (\d+)/i) || detailsText.match(/#(\d+)/);
+          // Extract jersey number
+          const jerseyMatch = fullText.match(/Jersey Number\s+(\d+)/i);
           const jerseyNumber = jerseyMatch ? jerseyMatch[1] : '';
           
-          // Extract other structured data if present
-          const position = card.getAttribute('data-rs-position') || '';
-          const year = card.getAttribute('data-rs-year') || card.getAttribute('data-rs-class') || '';
-          const hometown = card.getAttribute('data-rs-hometown') || '';
+          // Extract position
+          const positionMatch = fullText.match(/Position\s+([^\n]*?)(?:Academic Year|Height|Hometown|$)/i);
+          const position = positionMatch ? positionMatch[1].trim() : '';
+          
+          // Extract academic year
+          const yearMatch = fullText.match(/Academic Year\s+([^\n]*?)(?:Height|Hometown|Custom Field|$)/i);
+          const year = yearMatch ? yearMatch[1].trim() : '';
+          
+          // Extract height
+          const heightMatch = fullText.match(/Height\s+([^\n]*?)(?:Custom Field|Hometown|Last School|$)/i);
+          const height = heightMatch ? heightMatch[1].trim() : '';
+          
+          // Extract hometown
+          const hometownMatch = fullText.match(/Hometown\s+([^\n]*?)(?:Last School|Full Bio|$)/i);
+          const hometown = hometownMatch ? hometownMatch[1].trim() : '';
+          
+          // Extract high school
+          const schoolMatch = fullText.match(/Last School\s+([^\n]*?)(?:Full Bio|Expand|$)/i);
+          const highSchool = schoolMatch ? schoolMatch[1].trim() : '';
+          
+          // Try to find bio link - look for any link in the card
+          const anyLink = card.querySelector('a[href*="/roster/"]');
+          const bioHref = anyLink?.getAttribute('href') || '';
+          const bioLink = bioHref ? (bioHref.startsWith('http') ? bioHref : `${baseUrl}${bioHref}`) : '';
           
           return {
             name: name,
@@ -114,15 +126,15 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
             position: position,
             year: year,
             hometown: hometown,
-            height: '',
-            highSchool: '',
+            height: height,
+            highSchool: highSchool,
             bioLink: bioLink,
             // Debug info for first player
             _debug: index === 0 ? {
               cardHTML: card.innerHTML.substring(0, 300),
               foundNameElement: !!nameElement,
-              foundNameLink: !!nameLink,
-              textContent: card.textContent?.substring(0, 200)
+              foundNameLink: !!anyLink,
+              textContent: fullText.substring(0, 200)
             } : undefined
           };
         });
@@ -525,6 +537,7 @@ export async function getTopPerformers(sport: string, limit: number = 5): Promis
     totalPlayers: stats.length
   };
 }
+
 
 
 
