@@ -4,8 +4,11 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install ALL dependencies (including TypeScript for build)
+# Install ALL dependencies
 RUN npm ci
+
+# Install TypeScript globally to avoid permission issues
+RUN npm install -g typescript
 
 # Install Playwright browsers
 RUN npx playwright install chromium
@@ -13,8 +16,11 @@ RUN npx playwright install chromium
 # Copy application files
 COPY . .
 
+# Fix permissions on node_modules (if needed)
+RUN chmod -R +x node_modules/.bin || true
+
 # BUILD STEP - Compile TypeScript to JavaScript
-RUN npx tsc
+RUN tsc
 
 # Expose port
 EXPOSE 3000
