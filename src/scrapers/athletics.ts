@@ -1,13 +1,9 @@
 import { chromium } from 'playwright';
 
 // CONFIGURATION: Read base URL from environment variable
-import { chromium } from 'playwright';
-
-// CONFIGURATION: Read base URL from environment variable
 const BASE_URL = process.env.BASE_URL || 'https://soonersports.com';
-console.log('🚨 DEBUG - BASE_URL value:', BASE_URL);
-console.log('🚨 DEBUG - process.env.BASE_URL:', process.env.BASE_URL);
-console.log('🚨 DEBUG - All process.env:', JSON.stringify(process.env, null, 2));
+console.log('🚨 DEBUG MODULE LOAD - BASE_URL value:', BASE_URL);
+console.log('🚨 DEBUG MODULE LOAD - process.env.BASE_URL:', process.env.BASE_URL);
 
 export interface Player {
   name: string;
@@ -41,15 +37,24 @@ export interface NewsArticle {
 }
 
 export async function scrapeRoster(sport: string): Promise<Player[]> {
+  console.log('🚨 DEBUG scrapeRoster - Called with sport:', sport);
+  console.log('🚨 DEBUG scrapeRoster - BASE_URL:', BASE_URL);
+  console.log('🚨 DEBUG scrapeRoster - Full URL:', `${BASE_URL}/sports/${sport}/roster`);
+  
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   
   try {
+    const fullUrl = `${BASE_URL}/sports/${sport}/roster`;
+    console.log('🚨 DEBUG scrapeRoster - About to navigate to:', fullUrl);
+    
     // Use BASE_URL from environment variable
-    await page.goto(`${BASE_URL}/sports/${sport}/roster`, {
+    await page.goto(fullUrl, {
       waitUntil: 'networkidle',
       timeout: 30000
     });
+    
+    console.log('🚨 DEBUG scrapeRoster - Navigation complete, current URL:', page.url());
     
     const players = await page.evaluate((baseUrl) => {
       const playerElements = document.querySelectorAll('.sidearm-roster-player');
@@ -85,6 +90,11 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
         };
       });
     }, BASE_URL);
+    
+    console.log('🚨 DEBUG scrapeRoster - Found', players.length, 'players');
+    if (players.length > 0) {
+      console.log('🚨 DEBUG scrapeRoster - First player:', JSON.stringify(players[0]));
+    }
     
     return players;
   } finally {
