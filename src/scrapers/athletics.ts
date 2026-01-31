@@ -90,29 +90,30 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
           
           // Parse all data from text content
           // Format: "Jersey Number 00Allyssa ParkerPosition RHP/UTL Academic Year Fr.Height 5' 11'' Hometown Pocola, Okla.Last School Pocola HS"
+          // NO NEWLINES - continuous text!
           
           // Extract jersey number
           const jerseyMatch = fullText.match(/Jersey Number\s+(\d+)/i);
           const jerseyNumber = jerseyMatch ? jerseyMatch[1] : '';
           
-          // Extract position
-          const positionMatch = fullText.match(/Position\s+([^\n]*?)(?:Academic Year|Height|Hometown|$)/i);
+          // Extract position - from "Position " to "Academic Year"
+          const positionMatch = fullText.match(/Position\s+(.+?)(?=Academic Year|Height|Hometown|Last School|Full Bio|$)/i);
           const position = positionMatch ? positionMatch[1].trim() : '';
           
-          // Extract academic year
-          const yearMatch = fullText.match(/Academic Year\s+([^\n]*?)(?:Height|Hometown|Custom Field|$)/i);
+          // Extract academic year - from "Academic Year " to next field
+          const yearMatch = fullText.match(/Academic Year\s+(.+?)(?=Height|Hometown|Custom Field|Last School|Full Bio|$)/i);
           const year = yearMatch ? yearMatch[1].trim() : '';
           
-          // Extract height
-          const heightMatch = fullText.match(/Height\s+([^\n]*?)(?:Custom Field|Hometown|Last School|$)/i);
+          // Extract height - from "Height " to next field
+          const heightMatch = fullText.match(/Height\s+(.+?)(?=Custom Field|Hometown|Last School|Full Bio|$)/i);
           const height = heightMatch ? heightMatch[1].trim() : '';
           
-          // Extract hometown
-          const hometownMatch = fullText.match(/Hometown\s+([^\n]*?)(?:Last School|Full Bio|$)/i);
+          // Extract hometown - from "Hometown " to next field
+          const hometownMatch = fullText.match(/Hometown\s+(.+?)(?=Last School|Full Bio|Expand|$)/i);
           const hometown = hometownMatch ? hometownMatch[1].trim() : '';
           
-          // Extract high school
-          const schoolMatch = fullText.match(/Last School\s+([^\n]*?)(?:Full Bio|Expand|$)/i);
+          // Extract high school - from "Last School " to next field
+          const schoolMatch = fullText.match(/Last School\s+(.+?)(?=Full Bio|Expand|$)/i);
           const highSchool = schoolMatch ? schoolMatch[1].trim() : '';
           
           // Try to find bio link - look for any link in the card
