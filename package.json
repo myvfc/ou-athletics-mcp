@@ -7,8 +7,8 @@
   "bin": {
     "ou-athletics-mcp": "./build/index.js"
   },
-  "scripts": {
-    "build": "npx tsc",
+ "scripts": {
+  "build": "node_modules/.bin/tsc",
     "start": "node build/index.js",
     "dev": "npx tsc && node build/index.js"
   },
