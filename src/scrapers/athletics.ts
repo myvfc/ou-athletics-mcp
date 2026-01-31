@@ -48,20 +48,25 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
     const fullUrl = `${BASE_URL}/sports/${sport}/roster`;
     console.log('🚨 DEBUG scrapeRoster - About to navigate to:', fullUrl);
     
+    // Use domcontentloaded instead of networkidle for faster/more reliable loading
     await page.goto(fullUrl, {
-      waitUntil: 'networkidle',
-      timeout: 30000
+      waitUntil: 'domcontentloaded',
+      timeout: 60000
     });
     
     console.log('🚨 DEBUG scrapeRoster - Navigation complete, current URL:', page.url());
     
+    // Give React/JS time to render (OU uses client-side rendering)
+    console.log('🚨 DEBUG scrapeRoster - Waiting 5 seconds for client-side rendering...');
+    await page.waitForTimeout(5000);
+    
     // Wait for EITHER OU format OR NMHU format to load
     // Try OU format first (s-person-card), then fallback to NMHU (sidearm-roster-player)
     try {
-      await page.waitForSelector('.s-person-card, .sidearm-roster-player', { timeout: 10000 });
+      await page.waitForSelector('.s-person-card, .sidearm-roster-player', { timeout: 15000 });
       console.log('🚨 DEBUG scrapeRoster - Player elements loaded');
     } catch (e) {
-      console.log('🚨 DEBUG scrapeRoster - No player elements found after waiting');
+      console.log('🚨 DEBUG scrapeRoster - No player elements found after waiting, trying to scrape anyway');
     }
     
     const players = await page.evaluate((baseUrl) => {
@@ -474,3 +479,4 @@ export async function getTopPerformers(sport: string, limit: number = 5): Promis
     totalPlayers: stats.length
   };
 }
+
