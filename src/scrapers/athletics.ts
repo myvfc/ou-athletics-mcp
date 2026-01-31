@@ -77,33 +77,34 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
         console.log('🔍 Using OU format selectors, found', ouPlayerCards.length, 'cards');
         
         return Array.from(ouPlayerCards).map(card => {
-          // Find the name and link
-          const nameLink = card.querySelector('.s-person-details__personal-single-line a.hoverunderline');
-          const name = nameLink?.textContent?.trim() || '';
+          // Find the name - it's in an h3 inside a.hoverunderline
+          const nameElement = card.querySelector('a.hoverunderline h3');
+          const name = nameElement?.textContent?.trim() || '';
           
-          // Get bio link
+          // Get bio link from the a.hoverunderline
+          const nameLink = card.querySelector('a.hoverunderline');
           const bioHref = nameLink?.getAttribute('href') || '';
           const bioLink = bioHref ? (bioHref.startsWith('http') ? bioHref : `${baseUrl}${bioHref}`) : '';
           
-          // Extract other details from the card
-          // OU structure has details in various s-person-details divs
+          // Get all text content to parse details
           const detailsText = card.textContent || '';
           
-          // Try to extract jersey number (usually appears near the name)
-          const jerseyMatch = detailsText.match(/#(\d+)/);
+          // Try to extract jersey number (format: "Jersey number 1 full bio")
+          const jerseyMatch = detailsText.match(/Jersey number (\d+)/i) || detailsText.match(/#(\d+)/);
           const jerseyNumber = jerseyMatch ? jerseyMatch[1] : '';
           
-          // Try to extract position, year, hometown from text
-          // These are harder to parse reliably in OU's format
-          // We'll do our best with the text content
-          const lines = detailsText.split('\n').map(l => l.trim()).filter(l => l);
+          // Extract other structured data if present
+          // OU has data-rs-* attributes we might be able to use
+          const position = card.getAttribute('data-rs-position') || '';
+          const year = card.getAttribute('data-rs-year') || card.getAttribute('data-rs-class') || '';
+          const hometown = card.getAttribute('data-rs-hometown') || '';
           
           return {
             name: name,
             jerseyNumber: jerseyNumber,
-            position: '', // OU doesn't clearly separate this
-            year: '', // OU doesn't clearly separate this
-            hometown: '', // OU doesn't clearly separate this
+            position: position,
+            year: year,
+            hometown: hometown,
             height: '',
             highSchool: '',
             bioLink: bioLink
