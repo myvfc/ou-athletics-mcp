@@ -14,6 +14,12 @@ export interface Player {
   height: string;
   highSchool: string;
   bioLink: string;
+  _debug?: {
+    cardHTML: string;
+    foundNameElement: boolean;
+    foundNameLink: boolean;
+    textContent: string;
+  };
 }
 
 export interface Game {
@@ -182,14 +188,17 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
       const firstPlayer = result.players[0];
       console.log('🚨 DEBUG scrapeRoster - First player:', JSON.stringify(firstPlayer));
       
-      if (firstPlayer._debug) {
-        console.log('🔍 DEBUG Card HTML:', firstPlayer._debug.cardHTML);
-        console.log('🔍 DEBUG Found name element:', firstPlayer._debug.foundNameElement);
-        console.log('🔍 DEBUG Found name link:', firstPlayer._debug.foundNameLink);
-        console.log('🔍 DEBUG Text content:', firstPlayer._debug.textContent);
+      const firstPlayerDebug = (firstPlayer as any)._debug;
+      if (firstPlayerDebug) {
+        console.log('🔍 DEBUG Card HTML:', firstPlayerDebug.cardHTML);
+        console.log('🔍 DEBUG Found name element:', firstPlayerDebug.foundNameElement);
+        console.log('🔍 DEBUG Found name link:', firstPlayerDebug.foundNameLink);
+        console.log('🔍 DEBUG Text content:', firstPlayerDebug.textContent);
         
         // Remove debug info before returning
-        result.players.forEach(p => delete p._debug);
+        result.players.forEach((p: any) => {
+          if (p._debug) delete p._debug;
+        });
       }
     }
     
