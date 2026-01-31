@@ -76,15 +76,31 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
       if (ouPlayerCards.length > 0) {
         console.log('🔍 Using OU format selectors, found', ouPlayerCards.length, 'cards');
         
-        return Array.from(ouPlayerCards).map(card => {
+        return Array.from(ouPlayerCards).map((card, index) => {
+          // Debug first card only
+          if (index === 0) {
+            console.log('🔍 DEBUG Card HTML:', card.innerHTML.substring(0, 500));
+          }
+          
           // Find the name - it's in an h3 inside a.hoverunderline
           const nameElement = card.querySelector('a.hoverunderline h3');
           const name = nameElement?.textContent?.trim() || '';
+          
+          if (index === 0) {
+            console.log('🔍 DEBUG nameElement found:', !!nameElement);
+            console.log('🔍 DEBUG name value:', name);
+          }
           
           // Get bio link from the a.hoverunderline
           const nameLink = card.querySelector('a.hoverunderline');
           const bioHref = nameLink?.getAttribute('href') || '';
           const bioLink = bioHref ? (bioHref.startsWith('http') ? bioHref : `${baseUrl}${bioHref}`) : '';
+          
+          if (index === 0) {
+            console.log('🔍 DEBUG nameLink found:', !!nameLink);
+            console.log('🔍 DEBUG bioHref:', bioHref);
+            console.log('🔍 DEBUG bioLink:', bioLink);
+          }
           
           // Get all text content to parse details
           const detailsText = card.textContent || '';
@@ -480,4 +496,5 @@ export async function getTopPerformers(sport: string, limit: number = 5): Promis
     totalPlayers: stats.length
   };
 }
+
 
