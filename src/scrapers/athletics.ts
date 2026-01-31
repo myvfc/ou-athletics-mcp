@@ -69,38 +69,26 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
       console.log('🚨 DEBUG scrapeRoster - No player elements found after waiting, trying to scrape anyway');
     }
     
-    const players = await page.evaluate((baseUrl) => {
+    const result = await page.evaluate((baseUrl) => {
       // Try OU format first
       const ouPlayerCards = document.querySelectorAll('.s-person-card');
       
       if (ouPlayerCards.length > 0) {
-        console.log('🔍 Using OU format selectors, found', ouPlayerCards.length, 'cards');
-        
-        return Array.from(ouPlayerCards).map((card, index) => {
-          // Debug first card only
-          if (index === 0) {
-            console.log('🔍 DEBUG Card HTML:', card.innerHTML.substring(0, 500));
+        const players = Array.from(ouPlayerCards).map((card, index) => {
+          // Find the name - try multiple selectors
+          let nameElement = card.querySelector('a.hoverunderline h3');
+          if (!nameElement) {
+            nameElement = card.querySelector('h3');
           }
-          
-          // Find the name - it's in an h3 inside a.hoverunderline
-          const nameElement = card.querySelector('a.hoverunderline h3');
+          if (!nameElement) {
+            nameElement = card.querySelector('a.hoverunderline');
+          }
           const name = nameElement?.textContent?.trim() || '';
-          
-          if (index === 0) {
-            console.log('🔍 DEBUG nameElement found:', !!nameElement);
-            console.log('🔍 DEBUG name value:', name);
-          }
           
           // Get bio link from the a.hoverunderline
           const nameLink = card.querySelector('a.hoverunderline');
           const bioHref = nameLink?.getAttribute('href') || '';
           const bioLink = bioHref ? (bioHref.startsWith('http') ? bioHref : `${baseUrl}${bioHref}`) : '';
-          
-          if (index === 0) {
-            console.log('🔍 DEBUG nameLink found:', !!nameLink);
-            console.log('🔍 DEBUG bioHref:', bioHref);
-            console.log('🔍 DEBUG bioLink:', bioLink);
-          }
           
           // Get all text content to parse details
           const detailsText = card.textContent || '';
@@ -110,7 +98,6 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
           const jerseyNumber = jerseyMatch ? jerseyMatch[1] : '';
           
           // Extract other structured data if present
-          // OU has data-rs-* attributes we might be able to use
           const position = card.getAttribute('data-rs-position') || '';
           const year = card.getAttribute('data-rs-year') || card.getAttribute('data-rs-class') || '';
           const hometown = card.getAttribute('data-rs-hometown') || '';
@@ -123,18 +110,29 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
             hometown: hometown,
             height: '',
             highSchool: '',
-            bioLink: bioLink
+            bioLink: bioLink,
+            // Debug info for first player
+            _debug: index === 0 ? {
+              cardHTML: card.innerHTML.substring(0, 300),
+              foundNameElement: !!nameElement,
+              foundNameLink: !!nameLink,
+              textContent: card.textContent?.substring(0, 200)
+            } : undefined
           };
         });
+        
+        return {
+          format: 'OU',
+          count: ouPlayerCards.length,
+          players: players
+        };
       }
       
       // Fallback to NMHU/Sidearm format
       const sidearmPlayers = document.querySelectorAll('.sidearm-roster-player');
       
       if (sidearmPlayers.length > 0) {
-        console.log('🔍 Using Sidearm format selectors, found', sidearmPlayers.length, 'players');
-        
-        return Array.from(sidearmPlayers).map(player => {
+        const players = Array.from(sidearmPlayers).map(player => {
           const nameElement = player.querySelector('.sidearm-roster-player-name a');
           const positionElement = player.querySelector('.sidearm-roster-player-position');
           
@@ -162,18 +160,40 @@ export async function scrapeRoster(sport: string): Promise<Player[]> {
             bioLink: bioLink
           };
         });
+        
+        return {
+          format: 'Sidearm',
+          count: sidearmPlayers.length,
+          players: players
+        };
       }
       
-      console.log('🔍 No players found with either format');
-      return [];
+      return {
+        format: 'None',
+        count: 0,
+        players: []
+      };
     }, BASE_URL);
     
-    console.log('🚨 DEBUG scrapeRoster - Found', players.length, 'players');
-    if (players.length > 0) {
-      console.log('🚨 DEBUG scrapeRoster - First player:', JSON.stringify(players[0]));
+    console.log('🚨 DEBUG scrapeRoster - Format detected:', result.format);
+    console.log('🚨 DEBUG scrapeRoster - Found', result.count, 'players');
+    
+    if (result.players.length > 0) {
+      const firstPlayer = result.players[0];
+      console.log('🚨 DEBUG scrapeRoster - First player:', JSON.stringify(firstPlayer));
+      
+      if (firstPlayer._debug) {
+        console.log('🔍 DEBUG Card HTML:', firstPlayer._debug.cardHTML);
+        console.log('🔍 DEBUG Found name element:', firstPlayer._debug.foundNameElement);
+        console.log('🔍 DEBUG Found name link:', firstPlayer._debug.foundNameLink);
+        console.log('🔍 DEBUG Text content:', firstPlayer._debug.textContent);
+        
+        // Remove debug info before returning
+        result.players.forEach(p => delete p._debug);
+      }
     }
     
-    return players;
+    return result.players;
   } finally {
     await browser.close();
   }
@@ -496,5 +516,6 @@ export async function getTopPerformers(sport: string, limit: number = 5): Promis
     totalPlayers: stats.length
   };
 }
+
 
 
