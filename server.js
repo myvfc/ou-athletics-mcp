@@ -9,10 +9,16 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
 // ─── SUPABASE CLIENT ─────────────────────────────────────────────────────────
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+let supabase = null;
+try {
+  supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  console.log('✅ Supabase connected');
+} catch (err) {
+  console.error('❌ Supabase init failed:', err.message);
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 const AVAILABLE_SPORTS = [
