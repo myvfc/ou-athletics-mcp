@@ -296,11 +296,11 @@ setTimeout(async () => {
 app.get('/health', (req, res) => res.status(200).send('OK'));
 app.get('/', (req, res) => {
     res.json({
-        service: 'OU Athletics MCP Server',
+        service: 'okstate Athletics MCP Server',
         status: 'running',
         tools: TOOLS.length,
         available_sports: AVAILABLE_SPORTS,
-        base_url: 'https://soonersports.com'
+        base_url: 'https://okstate.com'
     });
 });
 
