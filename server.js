@@ -437,4 +437,4 @@ app.listen(PORT, () => {
         setInterval(syncNewsToSupabase, FOUR_HOURS);
     }, 120000);
 });
-});
+
