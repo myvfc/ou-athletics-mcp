@@ -290,7 +290,7 @@ const FOUR_HOURS = 4 * 60 * 60 * 1000;
 setTimeout(async () => {
   await syncNewsToSupabase();
   setInterval(syncNewsToSupabase, FOUR_HOURS);
-}, 30000);
+}, 60000);
 // ─────────────────────────────────────────────────────────────────────────────
 
 app.get('/health', (req, res) => res.status(200).send('OK'));
