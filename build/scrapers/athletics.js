@@ -125,9 +125,7 @@ export async function scrapeNews(sport, limit = 10) {
             const links = Array.from(document.querySelectorAll('a[href*="/news/"]'))
                .filter(a => {
        const href = a.getAttribute('href') || '';
-       return (href.includes('/news/20') || href.includes('/sports/20')) 
-        && !seen.has(href) && seen.add(href);
-    })
+     return (href.includes('/news/20') || href.includes('/sports/20')) && !seen.has(href) && seen.add(href);
                 .slice(0, maxArticles);
 
             return links.map(link => {
