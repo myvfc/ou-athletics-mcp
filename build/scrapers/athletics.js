@@ -119,11 +119,14 @@ export async function scrapeNews(sport, limit = 10) {
             timeout: 30000
         });
         await page.waitForTimeout(5000);
-        const news = await page.evaluate((maxArticles) => {
+        const news = await page.evaluate((args) => {
+            const { maxArticles, baseUrl } = args;
+            const seen = new Set();
             const links = Array.from(document.querySelectorAll('a[href*="/news/"]'))
                 .filter(a => {
                     const href = a.getAttribute('href') || '';
-                    return href.includes('/news/') && a.textContent?.trim().length > 10;
+                    const text = a.textContent?.trim() || '';
+                    return href.includes('/news/20') && !seen.has(href) && seen.add(href);
                 })
                 .slice(0, maxArticles);
 
@@ -135,14 +138,18 @@ export async function scrapeNews(sport, limit = 10) {
                     const [, year, month, day] = dateMatch;
                     date = `${month}/${day}/${year}`;
                 }
+                const rawTitle = link.textContent?.trim() || '';
+                const title = rawTitle.length > 5
+                    ? rawTitle
+                    : href.split('/').pop().replace(/-/g, ' ');
                 return {
-                    title: link.textContent?.trim() || '',
+                    title: title,
                     date: date,
                     summary: '',
-                    link: href.startsWith('http') ? href : `${BASE_URL}${href}`
+                    link: href.startsWith('http') ? href : `${baseUrl}${href}`
                 };
             });
-        }, limit);
+        }, { maxArticles: limit, baseUrl: BASE_URL });
         return news;
     }
     finally {
