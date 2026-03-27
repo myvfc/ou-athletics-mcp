@@ -285,12 +285,6 @@ async function syncNewsToSupabase() {
   return { inserted, skipped };
 }
 
-// ─── 4-HOUR CRON JOB ─────────────────────────────────────────────────────────
-const FOUR_HOURS = 4 * 60 * 60 * 1000;
-setTimeout(async () => {
-  await syncNewsToSupabase();
-  setInterval(syncNewsToSupabase, FOUR_HOURS);
-}, 60000);
 // ─────────────────────────────────────────────────────────────────────────────
 
 app.get('/health', (req, res) => res.status(200).send('OK'));
@@ -437,4 +431,10 @@ app.listen(PORT, () => {
     console.log(`OU Athletics MCP Server running on port ${PORT}`);
     console.log(`Tools: ${TOOLS.length}`);
     TOOLS.forEach(tool => console.log(`  - ${tool.name}`));
+    const FOUR_HOURS = 4 * 60 * 60 * 1000;
+    setTimeout(async () => {
+        await syncNewsToSupabase();
+        setInterval(syncNewsToSupabase, FOUR_HOURS);
+    }, 120000);
+});
 });
