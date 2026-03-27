@@ -287,6 +287,7 @@ setTimeout(async () => {
 }, 30000);
 // ─────────────────────────────────────────────────────────────────────────────
 
+app.get('/health', (req, res) => res.status(200).send('OK'));
 app.get('/', (req, res) => {
     res.json({
         service: 'OU Athletics MCP Server',
