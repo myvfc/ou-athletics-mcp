@@ -118,18 +118,15 @@ export async function scrapeNews(sport, limit = 10) {
             waitUntil: 'domcontentloaded',
             timeout: 30000
         });
-        await page.waitForTimeout(2000);
+        await page.waitForTimeout(5000);
         const news = await page.evaluate((maxArticles) => {
-            const archiveArticle = document.querySelector('article.sidearm-archives');
-            if (!archiveArticle) {
-                return [];
-            }
-            const links = Array.from(archiveArticle.querySelectorAll('a'))
+            const links = Array.from(document.querySelectorAll('a[href*="/news/"]'))
                 .filter(a => {
-                const href = a.getAttribute('href') || '';
-                return href.includes('/news/');
-            })
+                    const href = a.getAttribute('href') || '';
+                    return href.includes('/news/') && a.textContent?.trim().length > 10;
+                })
                 .slice(0, maxArticles);
+
             return links.map(link => {
                 const href = link.getAttribute('href') || '';
                 const dateMatch = href.match(/\/news\/(\d{4})\/(\d{1,2})\/(\d{1,2})\//);
@@ -294,3 +291,4 @@ export async function getTopPerformers(sport, limit = 5) {
         totalPlayers: stats.length
     };
 }
+
