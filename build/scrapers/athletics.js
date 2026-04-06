@@ -15,9 +15,9 @@ export async function scrapeRoster(sport) {
         });
         await page.waitForTimeout(5000);
         console.log(`🚨 DEBUG scrapeRoster - Navigation complete, current URL: ${page.url()}`);
-        const players = await page.evaluate(() => {
+        const baseUrl = BASE_URL;
+        const players = await page.evaluate((baseUrl) => {
             const playerElements = document.querySelectorAll('.sidearm-roster-player, .s-person-card');
-            console.log(`🚨 DEBUG scrapeRoster - Player elements loaded`);
             return Array.from(playerElements).map(player => {
                 const nameElement = player.querySelector('.sidearm-roster-player-name a, .s-person-details__personal-details-name a');
                 const positionElement = player.querySelector('.sidearm-roster-player-position, .s-person-details__personal-details-position');
@@ -25,6 +25,17 @@ export async function scrapeRoster(sport) {
                 if (position) {
                     position = position.split('\n')[0].trim();
                 }
+                const href = nameElement?.getAttribute('href') || '';
+                const bioLink = href
+                    ? (href.startsWith('http') ? href : `${baseUrl}${href}`)
+                    : '';
+
+                const imgElement = player.querySelector('.sidearm-roster-player-image img, .s-person-card__image img, img[src*="roster"], img[data-src*="roster"]');
+                const imgSrc = imgElement?.getAttribute('src') || imgElement?.getAttribute('data-src') || '';
+                const imageUrl = imgSrc
+                    ? (imgSrc.startsWith('http') ? imgSrc : `${baseUrl}${imgSrc}`)
+                    : '';
+
                 return {
                     name: nameElement?.textContent?.trim() || '',
                     jerseyNumber: player.querySelector('.sidearm-roster-player-jersey-number, [data-jersey]')?.textContent?.trim() || '',
@@ -33,10 +44,11 @@ export async function scrapeRoster(sport) {
                     hometown: player.querySelector('.sidearm-roster-player-hometown, .s-person-details__personal-details-hometown')?.textContent?.trim() || '',
                     height: player.querySelector('.sidearm-roster-player-height, .s-person-details__personal-details-height')?.textContent?.trim() || '',
                     highSchool: player.querySelector('.sidearm-roster-player-highschool, .s-person-details__personal-details-highschool')?.textContent?.trim() || '',
-                    bioLink: nameElement?.getAttribute('href') || ''
+                    bioLink: bioLink,
+                    imageUrl: imageUrl
                 };
             });
-        });
+        }, baseUrl);
         return players;
     }
     finally {
@@ -122,10 +134,11 @@ export async function scrapeNews(sport, limit = 10) {
         const news = await page.evaluate((args) => {
             const { maxArticles, baseUrl } = args;
             const seen = new Set();
-            const links = Array.from(document.querySelectorAll('a[href*="/news/"]'))
-               .filter(a => {
-       const href = a.getAttribute('href') || '';
-     return (href.includes('/news/20') || href.includes('/sports/20')) && !seen.has(href) && seen.add(href);
+            const links = Array.from(document.querySelectorAll('a[href*="/news/"], a[href*="/sports/"]'))
+                .filter(a => {
+                    const href = a.getAttribute('href') || '';
+                    return (href.includes('/news/20') || href.includes('/sports/20')) && !seen.has(href) && seen.add(href);
+                })
                 .slice(0, maxArticles);
 
             return links.map(link => {
@@ -296,4 +309,5 @@ export async function getTopPerformers(sport, limit = 5) {
         totalPlayers: stats.length
     };
 }
+
 
