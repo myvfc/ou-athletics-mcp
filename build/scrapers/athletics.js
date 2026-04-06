@@ -17,7 +17,7 @@ export async function scrapeRoster(sport) {
         console.log(`🚨 DEBUG scrapeRoster - Navigation complete, current URL: ${page.url()}`);
         const baseUrl = BASE_URL;
         const players = await page.evaluate((baseUrl) => {
-            const playerElements = document.querySelectorAll('.sidearm-roster-player, .s-person-card');
+            const playerElements = document.querySelectorAll('.sidearm-roster-player, .s-person-card, [class*="roster-player"], [class*="person-card"], li[data-player-id], .roster-flex-item');
             return Array.from(playerElements).map(player => {
                 const nameElement = player.querySelector('.sidearm-roster-player-name a, .s-person-details__personal-details-name a');
                 const positionElement = player.querySelector('.sidearm-roster-player-position, .s-person-details__personal-details-position');
@@ -96,7 +96,7 @@ export async function scrapeStats(sport) {
             waitUntil: 'domcontentloaded',
             timeout: 30000
         });
-        await page.waitForTimeout(5000);
+        await page.waitForTimeout(8000);
         const stats = await page.evaluate(() => {
             const statRows = document.querySelectorAll('.stats-table tbody tr, .sidearm-table tbody tr');
             return Array.from(statRows).map(row => {
