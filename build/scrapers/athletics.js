@@ -327,7 +327,7 @@ export async function getPlayerStats(sport, category = 'passing') {
 // For basketball recruiting, consider 247Sports or On3 API (separate integration).
 export async function getRecruiting(year) {
   const { cfbdName } = getSchool();
-  const recruitYear = year || (currentYear() + 1);
+  const recruitYear = year || currentYear();
 
   const [players, teamRankings] = await Promise.all([
     cfbdFetch('/recruiting/players', { year: recruitYear, team: cfbdName }),
@@ -376,7 +376,7 @@ export async function getRecruiting(year) {
 
 export async function getRecruitingByPosition(position, year) {
   const { cfbdName } = getSchool();
-  const recruitYear = year || (currentYear() + 1);
+  const recruitYear = year || currentYear();
 
   const players = await cfbdFetch('/recruiting/players', {
     year:     recruitYear,
@@ -532,6 +532,5 @@ export async function getTopPerformers(sport, limit = 5) {
     totalPlayers:  stats.length
   };
 }
-
 
 
