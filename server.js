@@ -226,7 +226,6 @@ const TOOLS = [
             required: ['sport'],
         },
     },
-    },
     {
         name: 'get_team_info',
         description: 'Get team info: record, colors, stadium, conference, mascot',
@@ -498,3 +497,4 @@ app.listen(PORT, () => {
     console.log(`Tools: ${TOOLS.length}`);
     TOOLS.forEach(tool => console.log(`  - ${tool.name}`));
 });
+
