@@ -327,18 +327,34 @@ export async function getPlayerStats(sport, category = 'passing') {
 // For basketball recruiting, consider 247Sports or On3 API (separate integration).
 export async function getRecruiting(year) {
   const { cfbdName } = getSchool();
-  const recruitYear = year || (currentYear() + 1); // recruiting is typically for next year's class
+  const recruitYear = year || (currentYear() + 1);
 
   const [players, teamRankings] = await Promise.all([
     cfbdFetch('/recruiting/players', { year: recruitYear, team: cfbdName }),
     cfbdFetch('/recruiting/teams', { year: recruitYear })
   ]);
 
+  console.log(`🏈 CFBD players raw (${recruitYear}):`, JSON.stringify(players)?.substring(0, 200));
+
   const myRanking = Array.isArray(teamRankings)
     ? teamRankings.find(t => t.team === cfbdName || t.team?.toLowerCase() === cfbdName.toLowerCase())
     : null;
 
-  const commits = Array.isArray(players) ? players : [];
+  // If team filter returned nothing, fetch all and filter by committedTo
+  let commits = Array.isArray(players) && players.length > 0 ? players : [];
+
+  if (commits.length === 0) {
+    console.log(`⚠️ No players for team=${cfbdName}, trying full list...`);
+    const allPlayers = await cfbdFetch('/recruiting/players', { year: recruitYear });
+    if (Array.isArray(allPlayers) && allPlayers.length > 0) {
+      console.log(`🏈 Total players in ${recruitYear}: ${allPlayers.length}, sample:`, JSON.stringify(allPlayers[0])?.substring(0, 200));
+      commits = allPlayers.filter(p =>
+        p.committedTo?.toLowerCase().includes(cfbdName.toLowerCase()) ||
+        p.team?.toLowerCase().includes(cfbdName.toLowerCase())
+      );
+      console.log(`🏈 Filtered commits for ${cfbdName}: ${commits.length}`);
+    }
+  }
 
   return {
     year:        recruitYear,
@@ -516,5 +532,6 @@ export async function getTopPerformers(sport, limit = 5) {
     totalPlayers:  stats.length
   };
 }
+
 
 
