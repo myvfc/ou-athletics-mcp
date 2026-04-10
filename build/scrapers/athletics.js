@@ -1,518 +1,500 @@
-/**
- * athletics.js — XSEN School Athletics Data
- * 
- * Data sources:
- *   - ESPN Public API  (no key required)
- *   - CFBD API         (key via CFBD_API_KEY env var)
- * 
- * No Playwright. No school website scraping.
- * 
- * Required env vars:
- *   SCHOOL_ESPN_SLUG   e.g. "oklahoma" | "oklahomast" | "texas"
- *   SCHOOL_CFBD_NAME   e.g. "Oklahoma" | "Oklahoma State" | "Texas"
- *   CFBD_API_KEY       (optional — recruiting/advanced stats)
- *
- * ── ESPN API Coverage by Sport ──────────────────────────────────────────────
- *
- *  Function               FB   MBB  WBB  BSB  SB   WSO  WVB  WRE  GYM
- *  ─────────────────────────────────────────────────────────────────────
- *  scrapeRoster           ✅   ✅   ✅   ✅   ✅   ✅   ✅   ⚠️   ❌
- *  scrapeSchedule         ✅   ✅   ✅   ✅   ✅   ✅   ✅   ⚠️   ❌
- *  scrapeNews             ✅   ✅   ✅   ✅   ⚠️   ⚠️   ⚠️   ❌   ❌
- *  getTeamInfo            ✅   ✅   ✅   ✅   ⚠️   ⚠️   ⚠️   ❌   ❌
- *  getDepthChart          ✅   ✅   ⚠️   ❌   ❌   ❌   ❌   ❌   ❌
- *  getInjuries            ✅   ✅   ⚠️   ❌   ❌   ❌   ❌   ❌   ❌
- *  getStandings           ✅   ✅   ✅   ✅   ⚠️   ⚠️   ⚠️   ❌   ❌
- *  getPlayerStats         ✅   ✅   ✅   ✅   ⚠️   ❌   ❌   ❌   ❌
- *  getRecruiting          ✅   ❌   ❌   ❌   ❌   ❌   ❌   ❌   ❌
- *  getRecruitingByPos     ✅   ❌   ❌   ❌   ❌   ❌   ❌   ❌   ❌
- *
- *  KEY:  ✅ Strong   ⚠️ Partial/varies   ❌ Not available
- *  FB=Football  MBB=Men's Basketball  WBB=Women's Basketball
- *  BSB=Baseball  SB=Softball  WSO=Women's Soccer
- *  WVB=Women's Volleyball  WRE=Wrestling  GYM=Gymnastics
- *
- *  NOTE: Wrestling and Gymnastics are better served by dedicated MCPs
- *        already in the XSEN stack. Women's sports scores/rankings
- *        are better served by the NCAA Women's MCP.
- *        Recruiting is FOOTBALL ONLY via CFBD.
- */
+#!/usr/bin/env node
+import express from 'express';
+import { scrapeRoster, scrapeSchedule, scrapeNews, getRecentResults, getUpcomingGames, getTeamDashboard, searchPlayer, getPlayerBio, getSportSummary, getTeamComparison, getSeasonRecords, getPlayerStats, getPlayerStatsDetail, getAllSportsSummary, getGameDetails, getTopPerformers, getTeamInfo, getDepthChart, getInjuries, getStandings, getRecruiting, getRecruitingByPosition } from './build/scrapers/athletics.js'
 
-const ESPN_BASE   = 'https://site.api.espn.com/apis/site/v2/sports';
-const CFBD_BASE   = 'https://api.collegefootballdata.com';
+const app = express();
+app.use(express.json());
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+const PORT = process.env.PORT || 3000;
 
-function getSchool() {
-  return {
-    espnSlug: process.env.SCHOOL_ESPN_SLUG || 'oklahoma',
-    cfbdName: process.env.SCHOOL_CFBD_NAME || 'Oklahoma'
-  };
-}
-
-function espnSportPath(sport) {
-  const map = {
-    'football':           'football/college-football',
-    'mens-basketball':    'basketball/mens-college-basketball',
-    'womens-basketball':  'basketball/womens-college-basketball',
-    'baseball':           'baseball/college-baseball',
-    'softball':           'softball/college-softball',
-    'mens-soccer':        'soccer/college-mens-soccer',
-    'womens-soccer':      'soccer/college-womens-soccer',
-    'womens-volleyball':  'volleyball/womens-college-volleyball',
-    'wrestling':          'wrestling/college-wrestling',
-    'gymnastics':         'gymnastics/womens-college-gymnastics'
-  };
-  return map[sport] || 'football/college-football';
-}
-
-async function espnFetch(path, params = {}) {
-  const url = new URL(path);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+// ─── SUPABASE CLIENT (dynamic import to prevent crash) ────────────────────────
+let supabase = null;
+(async () => {
   try {
-    const r = await fetch(url.toString(), { signal: AbortSignal.timeout(10000) });
-    if (!r.ok) return null;
-    return await r.json();
-  } catch (e) {
-    console.error(`ESPN fetch error: ${e.message}`);
-    return null;
-  }
-}
-
-async function cfbdFetch(path, params = {}) {
-  const url = new URL(`${CFBD_BASE}${path}`);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const headers = { Accept: 'application/json' };
-  if (process.env.CFBD_API_KEY) {
-    headers['Authorization'] = `Bearer ${process.env.CFBD_API_KEY}`;
-  }
-  try {
-    const r = await fetch(url.toString(), { headers, signal: AbortSignal.timeout(10000) });
-    if (!r.ok) return null;
-    return await r.json();
-  } catch (e) {
-    console.error(`CFBD fetch error: ${e.message}`);
-    return null;
-  }
-}
-
-function currentYear() {
-  const m = new Date().getMonth();
-  return m < 7 ? new Date().getFullYear() - 1 : new Date().getFullYear();
-}
-
-// ── ROSTER ────────────────────────────────────────────────────────────────────
-// Coverage: Strong for FB/MBB/WBB/BSB. Partial for SB/Soccer/VB. No wrestling/gymnastics.
-export async function scrapeRoster(sport) {
-  const { espnSlug } = getSchool();
-  const sportPath = espnSportPath(sport);
-  const data = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnSlug}/roster`);
-
-  if (!data?.athletes) {
-    return [];
-  }
-
-  // ESPN returns athletes grouped by position group
-  const players = [];
-  const groups = data.athletes || [];
-  
-  for (const group of groups) {
-    const items = group.items || group.athletes || (Array.isArray(group) ? group : []);
-    for (const p of items) {
-      players.push({
-        name:        p.fullName || p.displayName || '',
-        jerseyNumber: p.jersey || '',
-        position:    p.position?.abbreviation || p.position?.name || '',
-        year:        p.experience?.displayValue || '',
-        hometown:    p.birthPlace ? `${p.birthPlace.city || ''}, ${p.birthPlace.state || ''}`.replace(/^,\s*|,\s*$/, '') : '',
-        height:      p.displayHeight || '',
-        weight:      p.displayWeight || '',
-        highSchool:  '',
-        bioLink:     p.links?.[0]?.href || `https://www.espn.com/college-football/player/_/id/${p.id}`
-      });
-    }
-  }
-
-  return players;
-}
-
-// ── SCHEDULE ──────────────────────────────────────────────────────────────────
-// Coverage: Strong for FB/MBB/WBB/BSB/SB/Soccer/VB. Partial for wrestling. No gymnastics.
-export async function scrapeSchedule(sport) {
-  const { espnSlug } = getSchool();
-  const sportPath = espnSportPath(sport);
-  const year = currentYear();
-  const data = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnSlug}/schedule`, { season: year });
-
-  if (!data?.events) return [];
-
-  return data.events.map(event => {
-    const comp   = event.competitions?.[0];
-    const home   = comp?.competitors?.find(c => c.homeAway === 'home');
-    const away   = comp?.competitors?.find(c => c.homeAway === 'away');
-    const isHome = home?.team?.abbreviation === espnSlug.toUpperCase() ||
-                   home?.team?.slug === espnSlug;
-    const opp    = isHome ? away : home;
-
-    const status  = comp?.status?.type;
-    const winner  = comp?.competitors?.find(c => c.winner);
-    const myTeam  = comp?.competitors?.find(c => 
-      c.team?.slug === espnSlug || c.team?.abbreviation?.toLowerCase() === espnSlug.toLowerCase()
+    const { createClient } = await import('@supabase/supabase-js');
+    supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
     );
+    console.log('✅ Supabase connected');
+  } catch (err) {
+    console.error('❌ Supabase init failed:', err.message);
+  }
+})();
+// ─────────────────────────────────────────────────────────────────────────────
 
-    let result = '';
-    if (status?.completed) {
-      result = myTeam?.winner ? 'W' : 'L';
-    }
+// ─── HEARTBEAT ────────────────────────────────────────────────────────────────
+setInterval(() => {
+  console.log("💓 OU Athletics heartbeat", new Date().toISOString());
+}, 60_000);
+// ─────────────────────────────────────────────────────────────────────────────
 
-    return {
-      date:     event.date ? new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '',
-      opponent: opp?.team?.displayName || opp?.team?.shortDisplayName || '',
-      location: isHome ? 'Home' : (comp?.venue?.fullName || 'Away'),
-      result:   result,
-      score:    status?.completed
-                  ? `${myTeam?.score || ''}–${opp?.score || ''}`
-                  : (status?.description || 'Upcoming')
-    };
-  });
-}
+const AVAILABLE_SPORTS = [
+    'football',
+    'baseball',
+    'softball',
+    'mens-basketball',
+    'womens-basketball',
+    'mens-cross-country',
+    'womens-cross-country',
+    'womens-soccer',
+    'womens-volleyball',
+    'womens-track-and-field',
+    'wrestling'
+];
 
-// ── NEWS ──────────────────────────────────────────────────────────────────────
-// Coverage: Strong for FB/MBB/WBB/BSB. Partial for other women's sports. No wrestling/gymnastics.
-export async function scrapeNews(sport, limit = 10) {
-  const { espnSlug } = getSchool();
-  const sportPath = espnSportPath(sport);
-  const data = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnSlug}/news`, { limit });
+const TOOLS = [
+    {
+        name: 'get_roster',
+        description: 'Get the roster for any OU sport including player details',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS }
+            },
+            required: ['sport'],
+        },
+    },
+    {
+        name: 'get_schedule',
+        description: 'Get the schedule for any OU sport',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS }
+            },
+            required: ['sport'],
+        },
+    },
+    {
+        name: 'get_stats',
+        description: 'Get player and team statistics',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS }
+            },
+            required: ['sport'],
+        },
+    },
+    {
+        name: 'get_news',
+        description: 'Get latest news articles',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS },
+                limit: { type: 'number', description: 'Number of articles', default: 10 }
+            },
+            required: ['sport'],
+        },
+    },
+    {
+        name: 'get_recent_results',
+        description: 'Get the last 5 game results',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS },
+                limit: { type: 'number', description: 'Number of results', default: 5 }
+            },
+            required: ['sport'],
+        },
+    },
+    {
+        name: 'get_upcoming_games',
+        description: 'Get upcoming games',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS },
+                limit: { type: 'number', description: 'Number of games', default: 5 }
+            },
+            required: ['sport'],
+        },
+    },
+    {
+        name: 'get_team_dashboard',
+        description: 'Get complete team overview',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS }
+            },
+            required: ['sport'],
+        },
+    },
+    {
+        name: 'search_player',
+        description: 'Search for a player',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS },
+                searchTerm: { type: 'string', description: 'Search term' }
+            },
+            required: ['sport', 'searchTerm'],
+        },
+    },
+    {
+        name: 'get_player_bio',
+        description: 'Get player biography',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS },
+                playerName: { type: 'string', description: 'Player name' }
+            },
+            required: ['sport', 'playerName'],
+        },
+    },
+    {
+        name: 'get_sport_summary',
+        description: 'Get quick sport summary',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS }
+            },
+            required: ['sport'],
+        },
+    },
+    {
+        name: 'get_team_comparison',
+        description: 'Compare two sports teams',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport1: { type: 'string', description: 'First sport', enum: AVAILABLE_SPORTS },
+                sport2: { type: 'string', description: 'Second sport', enum: AVAILABLE_SPORTS }
+            },
+            required: ['sport1', 'sport2'],
+        },
+    },
+    {
+        name: 'get_season_records',
+        description: 'Get win/loss records for the season',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS }
+            },
+            required: ['sport'],
+        },
+    },
+    {
+        name: 'get_player_stats_detail',
+        description: 'Get detailed stats for a specific player',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS },
+                playerName: { type: 'string', description: 'Player name' }
+            },
+            required: ['sport', 'playerName'],
+        },
+    },
+    {
+        name: 'get_all_sports_summary',
+        description: 'Get overview of all OU sports in one call',
+        inputSchema: {
+            type: 'object',
+            properties: {},
+        },
+    },
+    {
+        name: 'get_game_details',
+        description: 'Get details about a specific game',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS },
+                opponent: { type: 'string', description: 'Opponent name' }
+            },
+            required: ['sport', 'opponent'],
+        },
+    },
+    {
+        name: 'get_top_performers',
+        description: 'Get top statistical performers',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sport: { type: 'string', description: 'Sport name', enum: AVAILABLE_SPORTS },
+                limit: { type: 'number', description: 'Number of players', default: 5 }
+            },
+            required: ['sport'],
+        },
+    },
+    {
+        name: 'get_team_info',
+        description: 'Get team info: record, colors, stadium, conference, mascot',
+        inputSchema: { type: 'object', properties: { sport: { type: 'string', enum: AVAILABLE_SPORTS } }, required: ['sport'] },
+    },
+    {
+        name: 'get_depth_chart',
+        description: 'Get current depth chart showing starters and backups at each position',
+        inputSchema: { type: 'object', properties: { sport: { type: 'string', enum: AVAILABLE_SPORTS } }, required: ['sport'] },
+    },
+    {
+        name: 'get_injuries',
+        description: 'Get current injury report listing injured players, status, and details',
+        inputSchema: { type: 'object', properties: { sport: { type: 'string', enum: AVAILABLE_SPORTS } }, required: ['sport'] },
+    },
+    {
+        name: 'get_standings',
+        description: 'Get conference standings showing win/loss records and rankings',
+        inputSchema: { type: 'object', properties: { sport: { type: 'string', enum: AVAILABLE_SPORTS } }, required: ['sport'] },
+    },
+    {
+        name: 'get_player_stats',
+        description: 'Get season statistical leaders by category',
+        inputSchema: { type: 'object', properties: { sport: { type: 'string', enum: AVAILABLE_SPORTS }, category: { type: 'string', default: 'passing' } }, required: ['sport'] },
+    },
+    {
+        name: 'get_recruiting',
+        description: 'Get recruiting class info: ranking, commits, star ratings, positions, hometowns',
+        inputSchema: { type: 'object', properties: { year: { type: 'number' } }, required: [] },
+    },
+    {
+        name: 'get_recruiting_by_position',
+        description: 'Get recruiting commits filtered by position (QB, RB, WR, OL, DB, etc.)',
+        inputSchema: { type: 'object', properties: { position: { type: 'string' }, year: { type: 'number' } }, required: ['position'] },
+    },
+];
 
-  if (!data?.articles) return [];
+// ─── NEWS SYNC FUNCTION ───────────────────────────────────────────────────────
+const NEWS_SPORTS = ['football', 'softball', 'mens-basketball', 'womens-basketball', 'baseball'];
 
-  return data.articles.slice(0, limit).map(a => ({
-    title:   a.headline || a.title || '',
-    date:    a.published ? new Date(a.published).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '',
-    summary: a.description || a.abstract || '',
-    link:    a.links?.web?.href || a.links?.mobile?.href || ''
-  }));
-}
+async function syncNewsToSupabase() {
+  if (!supabase) {
+    console.error('❌ Supabase not initialized, skipping sync');
+    return { inserted: 0, skipped: 0 };
+  }
+  console.log(`📰 News sync started: ${new Date().toISOString()}`);
+  let inserted = 0;
+  let skipped = 0;
 
-// ── TEAM INFO ─────────────────────────────────────────────────────────────────
-// Coverage: Strong for FB/MBB/WBB/BSB. Partial for other sports. No wrestling/gymnastics.
-export async function getTeamInfo(sport) {
-  const { espnSlug } = getSchool();
-  const sportPath = espnSportPath(sport);
-  const data = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnSlug}`);
+  for (const sport of NEWS_SPORTS) {
+    try {
+      console.log(`📰 Scraping news for: ${sport}`);
+      const articles = await scrapeNews(sport, 5);
 
-  if (!data?.team) return null;
+      for (const article of articles) {
+        if (!article.title || !article.link) continue;
 
-  const t = data.team;
-  return {
-    name:        t.displayName || t.name || '',
-    shortName:   t.shortDisplayName || t.abbreviation || '',
-    mascot:      t.nickname || '',
-    colors:      t.color ? [`#${t.color}`, `#${t.alternateColor}`] : [],
-    logo:        t.logos?.[0]?.href || '',
-    venue:       t.venue?.fullName || '',
-    city:        t.venue ? `${t.venue.city || ''}, ${t.venue.state || ''}` : '',
-    conference:  t.groups?.name || '',
-    record:      t.record?.items?.[0]?.summary || '',
-    links: {
-      espn:   `https://www.espn.com/college-football/team/_/id/${t.id}`,
-      roster: `https://www.espn.com/college-football/team/roster/_/id/${t.id}`
-    }
-  };
-}
+        const { data: existing } = await supabase
+          .from('xsen_news')
+          .select('id')
+          .eq('source', article.link)
+          .limit(1);
 
-// ── DEPTH CHART ───────────────────────────────────────────────────────────────
-// Coverage: FOOTBALL and MBB only. Other sports return empty. Concept doesn't apply to most other sports.
-export async function getDepthChart(sport) {
-  const { espnSlug } = getSchool();
-  const sportPath = espnSportPath(sport);
-  const data = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnSlug}/depthcharts`);
+        if (existing && existing.length > 0) {
+          skipped++;
+          continue;
+        }
 
-  if (!data?.depthCharts) return [];
+        const { error } = await supabase.from('xsen_news').insert([{
+          school: 'sooners',
+          category: 'general',
+          title: article.title,
+          body: article.title,
+          source: article.link,
+          active: true,
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+        }]);
 
-  return data.depthCharts.map(group => ({
-    position:  group.position?.displayName || group.position?.abbreviation || '',
-    starters:  (group.athletes || []).slice(0, 3).map((slot, i) => ({
-      depth:   i + 1,
-      name:    slot.athlete?.displayName || slot.athlete?.fullName || '',
-      jersey:  slot.athlete?.jersey || '',
-      year:    slot.athlete?.experience?.displayValue || ''
-    }))
-  })).filter(g => g.starters.length > 0);
-}
-
-// ── INJURIES ──────────────────────────────────────────────────────────────────
-// Coverage: FOOTBALL and MBB reliable. WBB partial. All other sports rarely populated by ESPN.
-export async function getInjuries(sport) {
-  const { espnSlug } = getSchool();
-  const sportPath = espnSportPath(sport);
-  const data = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnSlug}/injuries`);
-
-  if (!data?.injuries) return [];
-
-  return data.injuries.map(i => ({
-    name:     i.athlete?.displayName || i.athlete?.fullName || '',
-    position: i.athlete?.position?.abbreviation || '',
-    status:   i.status || '',
-    detail:   i.details?.detail || i.details?.type || '',
-    side:     i.details?.location || '',
-    date:     i.date ? new Date(i.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''
-  })).filter(i => i.name);
-}
-
-// ── STANDINGS ─────────────────────────────────────────────────────────────────
-// Coverage: Strong for FB/MBB/WBB/BSB. Partial for SB/Soccer/VB. No wrestling/gymnastics.
-// NOTE: For women's sports rankings, the NCAA Women's MCP is more reliable.
-export async function getStandings(sport) {
-  const { espnSlug } = getSchool();
-  const sportPath = espnSportPath(sport);
-
-  // Get team info first to find conference group ID
-  const teamData = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnSlug}`);
-  const groupId  = teamData?.team?.groups?.id;
-
-  const params = groupId ? { group: groupId } : {};
-  const data   = await espnFetch(`${ESPN_BASE}/${sportPath}/standings`, params);
-
-  if (!data?.standings?.entries) return [];
-
-  return data.standings.entries.map(e => ({
-    team:      e.team?.displayName || e.team?.shortDisplayName || '',
-    overall:   e.stats?.find(s => s.name === 'overall')?.displayValue || '',
-    conference: e.stats?.find(s => s.name === 'vs. Conf.')?.displayValue ||
-                e.stats?.find(s => s.abbreviation === 'conf')?.displayValue || '',
-    pct:       e.stats?.find(s => s.name === 'winPercent' || s.abbreviation === 'PCT')?.displayValue || '',
-    streak:    e.stats?.find(s => s.name === 'streak')?.displayValue || ''
-  }));
-}
-
-// ── PLAYER STATS ──────────────────────────────────────────────────────────────
-// Coverage: Strong for FB/MBB/WBB/BSB. Partial for SB. Not available for Soccer/VB/Wrestling/Gymnastics.
-export async function getPlayerStats(sport, category = 'passing') {
-  const { espnSlug } = getSchool();
-  const sportPath = espnSportPath(sport);
-  const year = currentYear();
-
-  const data = await espnFetch(
-    `${ESPN_BASE}/${sportPath}/teams/${espnSlug}/statistics`,
-    { season: year }
-  );
-
-  if (!data) return [];
-
-  // Also try leaders endpoint
-  const leadersData = await espnFetch(
-    `${ESPN_BASE}/${sportPath}/teams/${espnSlug}/leaders`
-  );
-
-  if (!leadersData?.leaders) return [];
-
-  const results = [];
-  for (const group of leadersData.leaders) {
-    const cat = group.name || group.displayName || '';
-    for (const leader of (group.leaders || []).slice(0, 5)) {
-      results.push({
-        category: cat,
-        name:     leader.athlete?.displayName || '',
-        value:    leader.displayValue || leader.value || '',
-        rank:     leader.rank || ''
-      });
+        if (error) {
+          console.error(`❌ Insert error for ${article.title}:`, error.message);
+        } else {
+          inserted++;
+          console.log(`✅ Inserted: ${article.title}`);
+        }
+      }
+    } catch (err) {
+      console.error(`❌ Failed to sync news for ${sport}:`, err.message);
     }
   }
-  return results;
+
+  console.log(`📰 News sync complete — inserted: ${inserted}, skipped: ${skipped}`);
+  return { inserted, skipped };
 }
 
-// ── RECRUITING ────────────────────────────────────────────────────────────────
-// Coverage: FOOTBALL ONLY via CFBD API. Basketball/other sports recruiting not available here.
-// For basketball recruiting, consider 247Sports or On3 API (separate integration).
-export async function getRecruiting(year) {
-  const { cfbdName } = getSchool();
-  const recruitYear = year || (currentYear() + 1); // recruiting is typically for next year's class
+// ─── 4-HOUR CRON JOB ─────────────────────────────────────────────────────────
+const FOUR_HOURS = 4 * 60 * 60 * 1000;
+setTimeout(async () => {
+  await syncNewsToSupabase();
+  setInterval(syncNewsToSupabase, FOUR_HOURS);
+}, 30000);
+// ─────────────────────────────────────────────────────────────────────────────
 
-  const [players, teamRankings] = await Promise.all([
-    cfbdFetch('/recruiting/players', { year: recruitYear, team: cfbdName }),
-    cfbdFetch('/recruiting/teams', { year: recruitYear })
-  ]);
+app.get('/health', (req, res) => res.status(200).send('OK'));
+app.get('/', (req, res) => {
+    res.json({
+        service: 'OU Athletics MCP Server',
+        status: 'running',
+        tools: TOOLS.length,
+        available_sports: AVAILABLE_SPORTS,
+        base_url: 'https://soonersports.com'
+    });
+});
 
-  const myRanking = Array.isArray(teamRankings)
-    ? teamRankings.find(t => t.team === cfbdName || t.team?.toLowerCase() === cfbdName.toLowerCase())
-    : null;
+// ─── SYNC NEWS ENDPOINTS ──────────────────────────────────────────────────────
+app.post('/sync-news', async (req, res) => {
+  try {
+    console.log(`📰 Manual news sync triggered`);
+    const result = await syncNewsToSupabase();
+    res.json({ status: 'ok', ...result });
+  } catch (err) {
+    console.error('❌ Sync error:', err.message);
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
 
-  const commits = Array.isArray(players) ? players : [];
+app.get('/sync-news', async (req, res) => {
+  try {
+    const result = await syncNewsToSupabase();
+    res.json({ status: 'ok', ...result });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+// ─────────────────────────────────────────────────────────────────────────────
 
-  return {
-    year:        recruitYear,
-    team:        cfbdName,
-    classRank:   myRanking?.rank || null,
-    totalPoints: myRanking?.points ? parseFloat(myRanking.points).toFixed(1) : null,
-    commitCount: commits.length,
-    commits:     commits.map(p => ({
-      name:      `${p.name || ''}`,
-      position:  p.position || '',
-      stars:     p.stars || 0,
-      rating:    p.rating ? parseFloat(p.rating).toFixed(4) : '',
-      hometown:  p.city && p.stateProvince ? `${p.city}, ${p.stateProvince}` : p.city || '',
-      highSchool: p.school || '',
-      status:    p.committedTo ? 'Committed' : 'Undecided'
-    })).sort((a, b) => (b.stars - a.stars) || (parseFloat(b.rating) - parseFloat(a.rating)))
-  };
-}
-
-export async function getRecruitingByPosition(position, year) {
-  const { cfbdName } = getSchool();
-  const recruitYear = year || (currentYear() + 1);
-
-  const players = await cfbdFetch('/recruiting/players', {
-    year:     recruitYear,
-    team:     cfbdName,
-    position: position
-  });
-
-  if (!Array.isArray(players)) return [];
-
-  return players.map(p => ({
-    name:      p.name || '',
-    position:  p.position || '',
-    stars:     p.stars || 0,
-    rating:    p.rating ? parseFloat(p.rating).toFixed(4) : '',
-    hometown:  p.city && p.stateProvince ? `${p.city}, ${p.stateProvince}` : '',
-    highSchool: p.school || ''
-  })).sort((a, b) => b.stars - a.stars);
-}
-
-// ── CONVENIENCE WRAPPERS (keep same API as old athletics.js) ──────────────────
-
-export async function getRecentResults(sport, limit = 5) {
-  const schedule = await scrapeSchedule(sport);
-  return schedule.filter(g => g.result !== '').slice(-limit).reverse();
-}
-
-export async function getUpcomingGames(sport, limit = 5) {
-  const schedule = await scrapeSchedule(sport);
-  return schedule.filter(g => g.result === '' && !g.score.match(/^\d/)).slice(0, limit);
-}
-
-export async function getTeamDashboard(sport) {
-  const [roster, schedule, news, teamInfo, injuries] = await Promise.all([
-    scrapeRoster(sport),
-    scrapeSchedule(sport),
-    scrapeNews(sport, 5),
-    getTeamInfo(sport),
-    getInjuries(sport)
-  ]);
-
-  const recentGames  = schedule.filter(g => g.result !== '').slice(-5).reverse();
-  const upcomingGames = schedule.filter(g => g.result === '').slice(0, 5);
-
-  return {
-    sport,
-    teamInfo,
-    teamSize:     roster.length,
-    roster,
-    recentResults:  recentGames,
-    upcomingGames,
-    latestNews:   news,
-    injuries:     injuries.slice(0, 10)
-  };
-}
-
-export async function searchPlayer(sport, searchTerm) {
-  const roster = await scrapeRoster(sport);
-  const term   = searchTerm.toLowerCase();
-  return roster.filter(p =>
-    p.name.toLowerCase().includes(term) ||
-    p.hometown.toLowerCase().includes(term) ||
-    p.position.toLowerCase().includes(term) ||
-    p.jerseyNumber === searchTerm
-  );
-}
-
-export async function getPlayerBio(sport, playerName) {
-  const roster = await scrapeRoster(sport);
-  return roster.find(p => p.name.toLowerCase().includes(playerName.toLowerCase())) || null;
-}
-
-export async function getSportSummary(sport) {
-  const [roster, news, schedule, teamInfo] = await Promise.all([
-    scrapeRoster(sport),
-    scrapeNews(sport, 3),
-    scrapeSchedule(sport),
-    getTeamInfo(sport)
-  ]);
-
-  const nextGame  = schedule.find(g => g.result === '');
-  const lastGame  = [...schedule].reverse().find(g => g.result !== '');
-
-  return {
-    sport,
-    teamInfo,
-    rosterSize: roster.length,
-    nextGame:   nextGame || null,
-    lastResult: lastGame || null,
-    recentNews: news
-  };
-}
-
-export async function getTeamComparison(sport1, sport2) {
-  const [roster1, roster2, news1, news2] = await Promise.all([
-    scrapeRoster(sport1),
-    scrapeRoster(sport2),
-    scrapeNews(sport1, 3),
-    scrapeNews(sport2, 3)
-  ]);
-  return {
-    team1: { sport: sport1, rosterSize: roster1.length, recentNews: news1 },
-    team2: { sport: sport2, rosterSize: roster2.length, recentNews: news2 }
-  };
-}
-
-export async function getSeasonRecords(sport) {
-  const schedule = await scrapeSchedule(sport);
-  const wins   = schedule.filter(g => g.result === 'W').length;
-  const losses = schedule.filter(g => g.result === 'L').length;
-  return {
-    sport,
-    wins,
-    losses,
-    totalGames:    wins + losses,
-    winPercentage: wins + losses > 0 ? (wins / (wins + losses) * 100).toFixed(1) : '0',
-    upcomingGames: schedule.filter(g => g.result === '').length
-  };
-}
-
-export async function getPlayerStatsDetail(sport, playerName) {
-  const [player, stats] = await Promise.all([
-    getPlayerBio(sport, playerName),
-    getPlayerStats(sport)
-  ]);
-  const playerStats = stats.filter(s =>
-    s.name?.toLowerCase().includes(playerName.toLowerCase())
-  );
-  return { player, statistics: playerStats };
-}
-
-export async function getAllSportsSummary() {
-  const sports = ['football', 'baseball', 'softball', 'mens-basketball', 'womens-basketball', 'womens-volleyball', 'womens-soccer'];
-  const summaries = await Promise.all(sports.map(async sport => {
+const mcpHandler = async (req, res) => {
+    const { method, params } = req.body;
     try {
-      return await getSportSummary(sport);
-    } catch {
-      return { sport, error: 'Unable to fetch data' };
+        if (method === 'initialize') {
+            return res.json({
+                jsonrpc: '2.0',
+                id: req.body.id,
+                result: {
+                    protocolVersion: '0.1.0',
+                    capabilities: { tools: {} },
+                    serverInfo: { name: 'ou-athletics-mcp', version: '1.0.0' }
+                }
+            });
+        }
+        if (method === 'tools/list') {
+            return res.json({
+                jsonrpc: '2.0',
+                id: req.body.id,
+                result: { tools: TOOLS }
+            });
+        }
+        if (method === 'tools/call') {
+            const { name, arguments: args } = params;
+            console.log(`Tool call: ${name}`, JSON.stringify(args, null, 2));
+            let data;
+            if (name === 'get_roster') {
+                data = await scrapeRoster(args.sport);
+            }
+            else if (name === 'get_schedule') {
+                data = await scrapeSchedule(args.sport);
+            }
+            else if (name === 'get_stats') {
+                data = await scrapeStats(args.sport);
+            }
+            else if (name === 'get_news') {
+                data = await scrapeNews(args.sport, args.limit || 10);
+            }
+            else if (name === 'get_recent_results') {
+                data = await getRecentResults(args.sport, args.limit || 5);
+            }
+            else if (name === 'get_upcoming_games') {
+                data = await getUpcomingGames(args.sport, args.limit || 5);
+            }
+            else if (name === 'get_team_dashboard') {
+                data = await getTeamDashboard(args.sport);
+            }
+            else if (name === 'search_player') {
+                data = await searchPlayer(args.sport, args.searchTerm);
+            }
+            else if (name === 'get_player_bio') {
+                data = await getPlayerBio(args.sport, args.playerName);
+            }
+            else if (name === 'get_sport_summary') {
+                data = await getSportSummary(args.sport);
+            }
+            else if (name === 'get_team_comparison') {
+                data = await getTeamComparison(args.sport1, args.sport2);
+            }
+            else if (name === 'get_season_records') {
+                data = await getSeasonRecords(args.sport);
+            }
+            else if (name === 'get_player_stats_detail') {
+                data = await getPlayerStatsDetail(args.sport, args.playerName);
+            }
+            else if (name === 'get_all_sports_summary') {
+                data = await getAllSportsSummary();
+            }
+            else if (name === 'get_game_details') {
+                data = await getGameDetails(args.sport, args.opponent);
+            }
+            else if (name === 'get_stats') {
+                data = await scrapeRoster(args.sport); // legacy fallback
+            }
+            else if (name === 'get_top_performers') {
+                data = await getTopPerformers(args.sport, args.limit || 5);
+            }
+            else if (name === 'get_team_info') {
+                data = await getTeamInfo(args.sport);
+            }
+            else if (name === 'get_depth_chart') {
+                data = await getDepthChart(args.sport);
+            }
+            else if (name === 'get_injuries') {
+                data = await getInjuries(args.sport);
+            }
+            else if (name === 'get_standings') {
+                data = await getStandings(args.sport);
+            }
+            else if (name === 'get_player_stats') {
+                data = await getPlayerStats(args.sport, args.category || 'passing');
+            }
+            else if (name === 'get_recruiting') {
+                data = await getRecruiting(args.year);
+            }
+            else if (name === 'get_recruiting_by_position') {
+                data = await getRecruitingByPosition(args.position, args.year);
+            }
+            else {
+                return res.status(400).json({
+                    jsonrpc: '2.0',
+                    id: req.body.id,
+                    error: { code: -32601, message: `Unknown tool: ${name}` }
+                });
+            }
+            return res.json({
+                jsonrpc: '2.0',
+                id: req.body.id,
+                result: {
+                    content: [{ type: 'text', text: JSON.stringify(data, null, 2) }]
+                }
+            });
+        }
+        return res.status(400).json({
+            jsonrpc: '2.0',
+            id: req.body.id,
+            error: { code: -32601, message: `Unknown method: ${method}` }
+        });
     }
-  }));
-  return summaries;
-}
+    catch (error) {
+        console.error('Error:', error.message);
+        return res.status(500).json({
+            jsonrpc: '2.0',
+            id: req.body.id,
+            error: { code: -32603, message: error.message }
+        });
+    }
+};
 
-export async function getGameDetails(sport, opponent) {
-  const schedule = await scrapeSchedule(sport);
-  return schedule.find(g => g.opponent.toLowerCase().includes(opponent.toLowerCase())) || null;
-}
+app.post('/', mcpHandler);
+app.post('/mcp', mcpHandler);
 
-export async function getTopPerformers(sport, limit = 5) {
-  const stats = await getPlayerStats(sport);
-  return {
-    sport,
-    topPerformers: stats.slice(0, limit),
-    totalPlayers:  stats.length
-  };
-}
+app.listen(PORT, () => {
+    console.log(`OU Athletics MCP Server running on port ${PORT}`);
+    console.log(`Tools: ${TOOLS.length}`);
+    TOOLS.forEach(tool => console.log(`  - ${tool.name}`));
+});
+
