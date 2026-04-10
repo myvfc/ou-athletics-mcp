@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import express from 'express';
-import { scrapeRoster, scrapeSchedule, scrapeNews, getRecentResults, getUpcomingGames, getTeamDashboard, searchPlayer, getPlayerBio, getSportSummary, getTeamComparison, getSeasonRecords, getPlayerStats, getPlayerStatsDetail, getAllSportsSummary, getGameDetails, getTopPerformers, getTeamInfo, getDepthChart, getInjuries, getStandings, getRecruiting, getRecruitingByPosition } from './scrapers/athletics.js'
+import { scrapeRoster, scrapeSchedule, scrapeNews, getRecentResults, getUpcomingGames, getTeamDashboard, searchPlayer, getPlayerBio, getSportSummary, getTeamComparison, getSeasonRecords, getPlayerStats, getPlayerStatsDetail, getAllSportsSummary, getGameDetails, getTopPerformers, getTeamInfo, getDepthChart, getInjuries, getStandings, getRecruiting, getRecruitingByPosition } from './build/scrapers/athletics.js'
 
 const app = express();
 app.use(express.json());
