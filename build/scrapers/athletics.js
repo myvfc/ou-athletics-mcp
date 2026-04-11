@@ -46,6 +46,7 @@ const CFBD_BASE   = 'https://api.collegefootballdata.com';
 function getSchool() {
   return {
     espnSlug: process.env.SCHOOL_ESPN_SLUG || 'oklahoma',
+    espnId:   process.env.SCHOOL_ESPN_ID   || '201',   // numeric ID — more reliable for non-football sports
     cfbdName: process.env.SCHOOL_CFBD_NAME || 'Oklahoma'
   };
 }
@@ -111,9 +112,12 @@ function currentYear() {
 // ── ROSTER ────────────────────────────────────────────────────────────────────
 // Coverage: Strong for FB/MBB/WBB/BSB. Partial for SB/Soccer/VB. No wrestling/gymnastics.
 export async function scrapeRoster(sport) {
-  const { espnSlug } = getSchool();
+  const { espnSlug, espnId } = getSchool();
   const sportPath = espnSportPath(sport);
-  const data = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnSlug}/roster`);
+  let data = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnSlug}/roster`);
+  if (!data?.athletes) {
+    data = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnId}/roster`);
+  }
 
   if (!data?.athletes) {
     return [];
@@ -155,20 +159,28 @@ export async function scrapeSchedule(sport) {
   const calYear  = new Date().getFullYear();
   const year     = SPRING_SPORTS.includes(sport) ? calYear : currentYear();
 
-  const scheduleUrl = `${ESPN_BASE}/${sportPath}/teams/${espnSlug}/schedule`;
+  // Try slug first, then numeric ID (slug works for football; ID works for all sports)
+  const { espnId } = getSchool();
+  let scheduleUrl = `${ESPN_BASE}/${sportPath}/teams/${espnSlug}/schedule`;
   console.log(`📅 Fetching schedule: ${scheduleUrl}?season=${year}`);
   let data = await espnFetch(scheduleUrl, { season: year });
-  console.log(`📅 Schedule response keys: ${data ? Object.keys(data).join(', ') : 'null'}, events: ${data?.events?.length ?? 'none'}`);
 
+  // If slug returned nothing, try numeric ID
+  if (!data?.events || data.events.length === 0) {
+    scheduleUrl = `${ESPN_BASE}/${sportPath}/teams/${espnId}/schedule`;
+    console.log(`📅 Slug failed, trying ID: ${scheduleUrl}?season=${year}`);
+    data = await espnFetch(scheduleUrl, { season: year });
+  }
+
+  // Try next year if still empty
   if (!data?.events || data.events.length === 0) {
     const fallback = year + 1;
-    console.log(`📅 No events for ${sport} in ${year}, trying ${fallback}...`);
+    console.log(`📅 No events in ${year}, trying ${fallback}...`);
     data = await espnFetch(scheduleUrl, { season: fallback });
-    console.log(`📅 Fallback response keys: ${data ? Object.keys(data).join(', ') : 'null'}, events: ${data?.events?.length ?? 'none'}`);
   }
 
   if (!data?.events) {
-    console.log(`📅 No schedule data found for ${sport} ${espnSlug}`);
+    console.log(`📅 No schedule data found for ${sport}`);
     return [];
   }
 
@@ -222,9 +234,12 @@ export async function scrapeSchedule(sport) {
 // ── NEWS ──────────────────────────────────────────────────────────────────────
 // Coverage: Strong for FB/MBB/WBB/BSB. Partial for other women's sports. No wrestling/gymnastics.
 export async function scrapeNews(sport, limit = 10) {
-  const { espnSlug } = getSchool();
+  const { espnSlug, espnId } = getSchool();
   const sportPath = espnSportPath(sport);
-  const data = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnSlug}/news`, { limit });
+  let data = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnSlug}/news`, { limit });
+  if (!data?.articles) {
+    data = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnId}/news`, { limit });
+  }
 
   if (!data?.articles) return [];
 
@@ -574,6 +589,7 @@ export async function getTopPerformers(sport, limit = 5) {
     totalPlayers:  stats.length
   };
 }
+
 
 
 
