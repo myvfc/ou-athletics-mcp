@@ -160,38 +160,48 @@ export async function scrapeSchedule(sport) {
 
   if (!data?.events) return [];
 
+  // ESPN always returns exactly 2 competitors per game.
+  // Since we fetched THIS team's schedule, identify our team by checking
+  // which competitor's homeAway matches the header team, or fall back to name.
+  const cfbdName = getSchool().cfbdName; // e.g. "Oklahoma"
+
   return data.events.map(event => {
     const comp = event.competitions?.[0];
-    if (!comp) return null;
+    if (!comp || !comp.competitors?.length) return null;
 
-    // Find our team and opponent by slug — more reliable than home/away
-    const myTeam = comp.competitors?.find(c =>
+    const [c0, c1] = comp.competitors;
+
+    // Identify our team: try slug, abbreviation, then name contains cfbdName
+    const isOurs = (c) =>
       c.team?.slug === espnSlug ||
       c.team?.abbreviation?.toLowerCase() === espnSlug.toLowerCase() ||
-      c.team?.id === comp.competitors?.find(x => x.team?.slug === espnSlug)?.team?.id
-    );
-    const opp = comp.competitors?.find(c => c !== myTeam);
+      c.team?.displayName?.toLowerCase().includes(cfbdName.toLowerCase());
 
-    const isHome   = myTeam?.homeAway === 'home';
-    const status   = comp.status?.type;
+    const myTeam = isOurs(c0) ? c0 : isOurs(c1) ? c1 : c0;
+    const opp    = myTeam === c0 ? c1 : c0;
+
+    const isHome    = myTeam.homeAway === 'home';
+    const status    = comp.status?.type;
     const completed = status?.completed || false;
 
     let result = '';
-    if (completed && myTeam) {
+    if (completed) {
       result = myTeam.winner ? 'W' : 'L';
     }
 
-    const venue = comp.venue?.fullName || '';
+    const venue    = comp.venue?.fullName || '';
     const location = isHome ? `Home${venue ? ' · ' + venue : ''}` : (venue || 'Away');
 
     return {
       date:     event.date ? new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '',
-      opponent: opp?.team?.displayName || opp?.team?.shortDisplayName || 'TBD',
+      opponent: opp.team?.displayName || opp.team?.shortDisplayName || 'TBD',
       location: location,
       homeAway: isHome ? 'Home' : 'Away',
       result:   result,
-      score:    completed && myTeam && opp
-                  ? `${myTeam.score}–${opp.score}`
+      myScore:  myTeam.score || '',
+      oppScore: opp.score || '',
+      score:    completed
+                  ? `${myTeam.score || '0'}–${opp.score || '0'}`
                   : (status?.description || 'Upcoming')
     };
   }).filter(Boolean);
