@@ -149,13 +149,18 @@ export async function scrapeSchedule(sport) {
   const { espnSlug } = getSchool();
   const sportPath = espnSportPath(sport);
 
-  // Try current year first, then next year if no events found
-  const year = currentYear();
+  // Spring sports (baseball, softball, soccer, volleyball) use calendar year
+  // Fall sports (football, basketball) use currentYear() which adjusts for season offset
+  const SPRING_SPORTS = ['baseball', 'softball', 'mens-soccer', 'womens-soccer', 'womens-volleyball'];
+  const calYear  = new Date().getFullYear();
+  const year     = SPRING_SPORTS.includes(sport) ? calYear : currentYear();
+
   let data = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnSlug}/schedule`, { season: year });
 
   if (!data?.events || data.events.length === 0) {
-    console.log(`📅 No events for ${sport} in ${year}, trying ${year + 1}...`);
-    data = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnSlug}/schedule`, { season: year + 1 });
+    const fallback = year + 1;
+    console.log(`📅 No events for ${sport} in ${year}, trying ${fallback}...`);
+    data = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnSlug}/schedule`, { season: fallback });
   }
 
   if (!data?.events) return [];
