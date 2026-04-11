@@ -155,15 +155,22 @@ export async function scrapeSchedule(sport) {
   const calYear  = new Date().getFullYear();
   const year     = SPRING_SPORTS.includes(sport) ? calYear : currentYear();
 
-  let data = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnSlug}/schedule`, { season: year });
+  const scheduleUrl = `${ESPN_BASE}/${sportPath}/teams/${espnSlug}/schedule`;
+  console.log(`📅 Fetching schedule: ${scheduleUrl}?season=${year}`);
+  let data = await espnFetch(scheduleUrl, { season: year });
+  console.log(`📅 Schedule response keys: ${data ? Object.keys(data).join(', ') : 'null'}, events: ${data?.events?.length ?? 'none'}`);
 
   if (!data?.events || data.events.length === 0) {
     const fallback = year + 1;
     console.log(`📅 No events for ${sport} in ${year}, trying ${fallback}...`);
-    data = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnSlug}/schedule`, { season: fallback });
+    data = await espnFetch(scheduleUrl, { season: fallback });
+    console.log(`📅 Fallback response keys: ${data ? Object.keys(data).join(', ') : 'null'}, events: ${data?.events?.length ?? 'none'}`);
   }
 
-  if (!data?.events) return [];
+  if (!data?.events) {
+    console.log(`📅 No schedule data found for ${sport} ${espnSlug}`);
+    return [];
+  }
 
   // ESPN always returns exactly 2 competitors per game.
   // Since we fetched THIS team's schedule, identify our team by checking
@@ -567,7 +574,6 @@ export async function getTopPerformers(sport, limit = 5) {
     totalPlayers:  stats.length
   };
 }
-
 
 
 
