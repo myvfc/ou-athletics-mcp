@@ -161,34 +161,40 @@ export async function scrapeSchedule(sport) {
   if (!data?.events) return [];
 
   return data.events.map(event => {
-    const comp   = event.competitions?.[0];
-    const home   = comp?.competitors?.find(c => c.homeAway === 'home');
-    const away   = comp?.competitors?.find(c => c.homeAway === 'away');
-    const isHome = home?.team?.abbreviation === espnSlug.toUpperCase() ||
-                   home?.team?.slug === espnSlug;
-    const opp    = isHome ? away : home;
+    const comp = event.competitions?.[0];
+    if (!comp) return null;
 
-    const status  = comp?.status?.type;
-    const winner  = comp?.competitors?.find(c => c.winner);
-    const myTeam  = comp?.competitors?.find(c => 
-      c.team?.slug === espnSlug || c.team?.abbreviation?.toLowerCase() === espnSlug.toLowerCase()
+    // Find our team and opponent by slug — more reliable than home/away
+    const myTeam = comp.competitors?.find(c =>
+      c.team?.slug === espnSlug ||
+      c.team?.abbreviation?.toLowerCase() === espnSlug.toLowerCase() ||
+      c.team?.id === comp.competitors?.find(x => x.team?.slug === espnSlug)?.team?.id
     );
+    const opp = comp.competitors?.find(c => c !== myTeam);
+
+    const isHome   = myTeam?.homeAway === 'home';
+    const status   = comp.status?.type;
+    const completed = status?.completed || false;
 
     let result = '';
-    if (status?.completed) {
-      result = myTeam?.winner ? 'W' : 'L';
+    if (completed && myTeam) {
+      result = myTeam.winner ? 'W' : 'L';
     }
+
+    const venue = comp.venue?.fullName || '';
+    const location = isHome ? `Home${venue ? ' · ' + venue : ''}` : (venue || 'Away');
 
     return {
       date:     event.date ? new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '',
-      opponent: opp?.team?.displayName || opp?.team?.shortDisplayName || '',
-      location: isHome ? 'Home' : (comp?.venue?.fullName || 'Away'),
+      opponent: opp?.team?.displayName || opp?.team?.shortDisplayName || 'TBD',
+      location: location,
+      homeAway: isHome ? 'Home' : 'Away',
       result:   result,
-      score:    status?.completed
-                  ? `${myTeam?.score || ''}–${opp?.score || ''}`
+      score:    completed && myTeam && opp
+                  ? `${myTeam.score}–${opp.score}`
                   : (status?.description || 'Upcoming')
     };
-  });
+  }).filter(Boolean);
 }
 
 // ── NEWS ──────────────────────────────────────────────────────────────────────
@@ -546,6 +552,8 @@ export async function getTopPerformers(sport, limit = 5) {
     totalPlayers:  stats.length
   };
 }
+
+
 
 
 
