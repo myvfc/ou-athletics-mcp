@@ -148,8 +148,15 @@ export async function scrapeRoster(sport) {
 export async function scrapeSchedule(sport) {
   const { espnSlug } = getSchool();
   const sportPath = espnSportPath(sport);
+
+  // Try current year first, then next year if no events found
   const year = currentYear();
-  const data = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnSlug}/schedule`, { season: year });
+  let data = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnSlug}/schedule`, { season: year });
+
+  if (!data?.events || data.events.length === 0) {
+    console.log(`📅 No events for ${sport} in ${year}, trying ${year + 1}...`);
+    data = await espnFetch(`${ESPN_BASE}/${sportPath}/teams/${espnSlug}/schedule`, { season: year + 1 });
+  }
 
   if (!data?.events) return [];
 
@@ -539,6 +546,7 @@ export async function getTopPerformers(sport, limit = 5) {
     totalPlayers:  stats.length
   };
 }
+
 
 
 
