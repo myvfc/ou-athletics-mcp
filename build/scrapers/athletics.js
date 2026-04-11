@@ -83,12 +83,19 @@ async function cfbdFetch(path, params = {}) {
   const url = new URL(`${CFBD_BASE}${path}`);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   const headers = { Accept: 'application/json' };
+  const keyPresent = !!process.env.CFBD_API_KEY;
+  console.log(`🔑 CFBD key present: ${keyPresent}, URL: ${url.toString()}`);
   if (process.env.CFBD_API_KEY) {
     headers['Authorization'] = `Bearer ${process.env.CFBD_API_KEY}`;
   }
   try {
     const r = await fetch(url.toString(), { headers, signal: AbortSignal.timeout(10000) });
-    if (!r.ok) return null;
+    console.log(`📡 CFBD response status: ${r.status} ${r.statusText}`);
+    if (!r.ok) {
+      const errText = await r.text();
+      console.error(`❌ CFBD error body: ${errText.substring(0, 200)}`);
+      return null;
+    }
     return await r.json();
   } catch (e) {
     console.error(`CFBD fetch error: ${e.message}`);
@@ -532,5 +539,6 @@ export async function getTopPerformers(sport, limit = 5) {
     totalPlayers:  stats.length
   };
 }
+
 
 
