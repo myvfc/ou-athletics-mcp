@@ -7,6 +7,12 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
+// ─── DEBUG ENV VARS AT STARTUP ────────────────────────────────────────────────
+console.log("🔍 ENV KEYS:", Object.keys(process.env).filter(k => !k.includes('npm') && !k.includes('NODE') && !k.includes('PATH')));
+console.log("🔑 CFBD_API_KEY present:", !!process.env.CFBD_API_KEY);
+console.log("🏫 SCHOOL_ESPN_SLUG:", process.env.SCHOOL_ESPN_SLUG);
+console.log("🏫 SCHOOL_CFBD_NAME:", process.env.SCHOOL_CFBD_NAME);
+
 // ─── SUPABASE CLIENT (dynamic import to prevent crash) ────────────────────────
 let supabase = null;
 (async () => {
@@ -497,4 +503,5 @@ app.listen(PORT, () => {
     console.log(`Tools: ${TOOLS.length}`);
     TOOLS.forEach(tool => console.log(`  - ${tool.name}`));
 });
+
 
